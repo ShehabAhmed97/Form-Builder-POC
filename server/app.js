@@ -7,6 +7,11 @@ function createApp(db) {
   app.use(express.json({ limit: '10mb' }));
 
   app.use('/api/forms', require('./routes/forms')(db));
+  app.use('/api/sub-apps', require('./routes/subApps')(db));
+
+  const { submissionsRoutes, singleSubmissionRoutes } = require('./routes/submissions');
+  app.use('/api/sub-apps/:subAppId/submissions', submissionsRoutes(db));
+  app.use('/api/submissions', singleSubmissionRoutes(db));
 
   app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
