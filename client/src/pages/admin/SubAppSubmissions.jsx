@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Form } from '@formio/react';
 import { getSubApp } from '../../api/subApps';
 import { getSubmissions, getSubmission } from '../../api/submissions';
+import SubmissionViewer from '../../components/SubmissionViewer';
 
 const STATUS_COLORS = {
   draft: 'bg-gray-100 text-gray-700',
@@ -104,11 +104,7 @@ export default function SubAppSubmissions() {
                 <div className="text-xs text-gray-500 mb-4">
                   Form version: v{selected.version_num} | User: {selected.user_id}
                 </div>
-                <Form
-                  form={selected.schema}
-                  submission={{ data: selected.data }}
-                  options={{ readOnly: true }}
-                />
+                <SubmissionViewer schema={selected.schema} data={selected.data} />
               </div>
             </div>
           )}
