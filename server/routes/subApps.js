@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 
-module.exports = function subAppsRoutes(db) {
+export default function subAppsRoutes(db) {
   const router = express.Router();
 
   // List all sub-apps with form info and submission count
@@ -54,4 +54,4 @@ module.exports = function subAppsRoutes(db) {
   });
 
   return router;
-};
+}

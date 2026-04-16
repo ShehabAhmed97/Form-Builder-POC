@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 
-module.exports = function formsRoutes(db) {
+export default function formsRoutes(db) {
   const router = express.Router();
 
   // List all forms
@@ -13,7 +13,8 @@ module.exports = function formsRoutes(db) {
   router.post('/', (req, res) => {
     const { name, description, schema } = req.body;
 
-    const transaction = db.transaction(() => {
+    db.exec('BEGIN');
+    try {
       const result = db.prepare(
         'INSERT INTO forms (name, description, current_version) VALUES (?, ?, 1)'
       ).run(name, description || '');
@@ -23,12 +24,14 @@ module.exports = function formsRoutes(db) {
         'INSERT INTO form_versions (form_id, version_num, schema) VALUES (?, 1, ?)'
       ).run(formId, JSON.stringify(schema));
 
-      return formId;
-    });
+      db.exec('COMMIT');
 
-    const formId = transaction();
-    const form = db.prepare('SELECT * FROM forms WHERE id = ?').get(formId);
-    res.status(201).json(form);
+      const form = db.prepare('SELECT * FROM forms WHERE id = ?').get(formId);
+      res.status(201).json(form);
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
   });
 
   // Get form with current schema
@@ -55,7 +58,8 @@ module.exports = function formsRoutes(db) {
 
     const newVersion = existing.current_version + 1;
 
-    const transaction = db.transaction(() => {
+    db.exec('BEGIN');
+    try {
       db.prepare(
         'UPDATE forms SET name = ?, description = ?, current_version = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
       ).run(name || existing.name, description ?? existing.description, newVersion, formId);
@@ -63,9 +67,12 @@ module.exports = function formsRoutes(db) {
       db.prepare(
         'INSERT INTO form_versions (form_id, version_num, schema) VALUES (?, ?, ?)'
       ).run(formId, newVersion, JSON.stringify(schema));
-    });
 
-    transaction();
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
 
     const updated = db.prepare(`
       SELECT f.*, fv.schema
@@ -88,4 +95,4 @@ module.exports = function formsRoutes(db) {
   });
 
   return router;
-};
+}

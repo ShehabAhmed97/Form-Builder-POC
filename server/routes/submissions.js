@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 
-function submissionsRoutes(db) {
+export function submissionsRoutes(db) {
   const router = express.Router({ mergeParams: true });
 
   // List submissions for a sub-app (optionally filtered by user_id)
@@ -55,7 +55,7 @@ function submissionsRoutes(db) {
   return router;
 }
 
-function singleSubmissionRoutes(db) {
+export function singleSubmissionRoutes(db) {
   const router = express.Router();
 
   // Get single submission with its form schema
@@ -75,5 +75,3 @@ function singleSubmissionRoutes(db) {
 
   return router;
 }
-
-module.exports = { submissionsRoutes, singleSubmissionRoutes };
