@@ -46,6 +46,58 @@ export function createFormsRoutes(db) {
       });
     }
 
+    // Load conditions for all elements
+    const allConditions = db.prepare(`
+      SELECT fec.id, fec.form_element_id, fec.action_type_id, fec.action_value,
+             fec.logic_operator, fec.display_order,
+             cat.name as action_name
+      FROM form_element_conditions fec
+      JOIN condition_action_types cat ON fec.action_type_id = cat.id
+      WHERE fec.form_element_id IN (${placeholders})
+      ORDER BY fec.display_order
+    `).all(...elementIds);
+
+    const conditionIds = allConditions.map(c => c.id);
+    let allRules = [];
+    if (conditionIds.length > 0) {
+      const condPlaceholders = conditionIds.map(() => '?').join(',');
+      allRules = db.prepare(`
+        SELECT fecr.id, fecr.condition_id, fecr.source_element_id, fecr.operator_id,
+               fecr.value, fecr.display_order,
+               co.name as operator_name,
+               fe.element_key as source_key
+        FROM form_element_condition_rules fecr
+        JOIN condition_operators co ON fecr.operator_id = co.id
+        JOIN form_elements fe ON fecr.source_element_id = fe.id
+        WHERE fecr.condition_id IN (${condPlaceholders})
+        ORDER BY fecr.display_order
+      `).all(...conditionIds);
+    }
+
+    const conditionsByElement = new Map();
+    for (const c of allConditions) {
+      if (!conditionsByElement.has(c.form_element_id)) conditionsByElement.set(c.form_element_id, []);
+      conditionsByElement.get(c.form_element_id).push({
+        id: c.id,
+        action_type_id: c.action_type_id,
+        action_name: c.action_name,
+        action_value: c.action_value,
+        logic_operator: c.logic_operator,
+        display_order: c.display_order,
+        rules: allRules
+          .filter(r => r.condition_id === c.id)
+          .map(r => ({
+            id: r.id,
+            source_element_id: r.source_element_id,
+            source_key: r.source_key,
+            operator_id: r.operator_id,
+            operator_name: r.operator_name,
+            value: r.value,
+            display_order: r.display_order,
+          })),
+      });
+    }
+
     return elements.map(e => ({
       id: e.id,
       element_type_id: e.element_type_id,
@@ -56,6 +108,7 @@ export function createFormsRoutes(db) {
       parent_id: e.parent_id,
       values: valuesByElement.get(e.id) || {},
       options: optionsByElement.get(e.id) || [],
+      conditions: conditionsByElement.get(e.id) || [],
     }));
   }
 
@@ -165,6 +218,37 @@ export function createFormsRoutes(db) {
         if (el.options) {
           for (const opt of el.options) {
             insertOption.run(elementId, opt.label, opt.value, opt.display_order);
+          }
+        }
+      }
+
+      // Insert conditions
+      const insertCondition = db.prepare(
+        'INSERT INTO form_element_conditions (form_element_id, action_type_id, action_value, logic_operator, display_order) VALUES (?, ?, ?, ?, ?)'
+      );
+      const insertRule = db.prepare(
+        'INSERT INTO form_element_condition_rules (condition_id, source_element_id, operator_id, value, display_order) VALUES (?, ?, ?, ?, ?)'
+      );
+
+      for (const el of elements) {
+        const elementId = keyToId.get(el.element_key);
+        if (el.conditions) {
+          for (let ci = 0; ci < el.conditions.length; ci++) {
+            const cond = el.conditions[ci];
+            const condResult = insertCondition.run(
+              elementId, cond.action_type_id, cond.action_value || null, cond.logic_operator || 'AND', ci
+            );
+            const condId = Number(condResult.lastInsertRowid);
+
+            if (cond.rules) {
+              for (let ri = 0; ri < cond.rules.length; ri++) {
+                const rule = cond.rules[ri];
+                const sourceId = keyToId.get(rule.source_key);
+                if (sourceId) {
+                  insertRule.run(condId, sourceId, rule.operator_id, rule.value, ri);
+                }
+              }
+            }
           }
         }
       }

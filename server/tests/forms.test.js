@@ -190,5 +190,80 @@ describe('Forms API', () => {
       const v2Detail = await request(app).get(`/api/forms/${formId}/versions/${v2.id}`);
       expect(v2Detail.body.elements[0].element_key).toBe('field_a');
     });
+
+    it('saves and loads conditions', async () => {
+      const create = await request(app)
+        .post('/api/forms')
+        .send({ name: 'Conditions Test' });
+      const formId = create.body.id;
+
+      const typesRes = await request(app).get('/api/registry/element-types');
+      const selectType = typesRes.body.find(c => c.name === 'selection').types.find(t => t.name === 'select');
+      const textType = typesRes.body.find(c => c.name === 'basic_input').types.find(t => t.name === 'textfield');
+
+      const actionsRes = await request(app).get('/api/registry/condition-actions');
+      const showAction = actionsRes.body.find(a => a.name === 'show');
+      const requireAction = actionsRes.body.find(a => a.name === 'require');
+      const opsRes = await request(app).get('/api/registry/condition-operators');
+      const equalsOp = opsRes.body.find(o => o.name === 'equals');
+
+      await request(app).put(`/api/forms/${formId}`).send({
+        name: 'Conditions Test',
+        elements: [
+          {
+            element_type_id: selectType.id,
+            element_key: 'department',
+            position: 0,
+            parent_key: null,
+            values: { label: 'Department' },
+            options: [
+              { label: 'Engineering', value: 'eng', display_order: 0 },
+              { label: 'HR', value: 'hr', display_order: 1 },
+            ],
+            conditions: [],
+          },
+          {
+            element_type_id: textType.id,
+            element_key: 'tech_stack',
+            position: 1,
+            parent_key: null,
+            values: { label: 'Tech Stack' },
+            options: [],
+            conditions: [
+              {
+                action_type_id: showAction.id,
+                action_value: null,
+                logic_operator: 'AND',
+                rules: [
+                  { source_key: 'department', operator_id: equalsOp.id, value: 'eng' },
+                ],
+              },
+              {
+                action_type_id: requireAction.id,
+                action_value: null,
+                logic_operator: 'AND',
+                rules: [
+                  { source_key: 'department', operator_id: equalsOp.id, value: 'eng' },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      const res = await request(app).get(`/api/forms/${formId}`);
+      const techStack = res.body.elements.find(e => e.element_key === 'tech_stack');
+      expect(techStack.conditions).toHaveLength(2);
+      expect(techStack.conditions[0]).toMatchObject({
+        action_name: 'show',
+        logic_operator: 'AND',
+      });
+      expect(techStack.conditions[0].rules).toHaveLength(1);
+      expect(techStack.conditions[0].rules[0]).toMatchObject({
+        source_key: 'department',
+        operator_name: 'equals',
+        value: 'eng',
+      });
+    });
   });
 });
