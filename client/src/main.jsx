@@ -4,7 +4,6 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './components/AuthContext';
 import App from './App';
-import 'formiojs/dist/formio.full.min.css';
 import './index.css';
 
 const queryClient = new QueryClient({

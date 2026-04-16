@@ -1,9 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { FormBuilder } from '@formio/react';
 import { getForm, createForm, updateForm } from '../../api/forms';
-import FormPreview from '../../components/FormPreview';
 import SimpleBuilder from '../../components/SimpleBuilder';
 
 export default function FormBuilderPage() {
@@ -15,9 +13,6 @@ export default function FormBuilderPage() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [schema, setSchema] = useState({ display: 'form', components: [] });
-  const [mode, setMode] = useState('dnd');
-  const [activeTab, setActiveTab] = useState('build');
-  const builderRef = useRef(null);
 
   const { data: form } = useQuery({
     queryKey: ['form', id],
@@ -29,7 +24,9 @@ export default function FormBuilderPage() {
     if (form) {
       setName(form.name);
       setDescription(form.description || '');
-      setSchema(form.schema);
+      if (form.schema) {
+        setSchema(typeof form.schema === 'string' ? JSON.parse(form.schema) : form.schema);
+      }
     }
   }, [form]);
 
@@ -42,26 +39,34 @@ export default function FormBuilderPage() {
   });
 
   const handleSave = () => {
-    if (!name.trim()) return;
     saveMutation.mutate({ name, description, schema });
   };
 
   return (
-    <div>
-      <h2 className="text-2xl font-bold mb-6">
-        {isEditing ? 'Edit' : 'Create'} Form Template
-      </h2>
+    <div className="max-w-6xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">
+          {isEditing ? 'Edit Form Template' : 'New Form Template'}
+        </h1>
+        <button
+          onClick={handleSave}
+          disabled={saveMutation.isPending || !name.trim()}
+          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+          {saveMutation.isPending ? 'Saving...' : 'Save'}
+        </button>
+      </div>
 
       <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Form Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-              placeholder="e.g. Employee Onboarding Form"
+              className="w-full border rounded-lg px-3 py-2"
+              placeholder="Enter form name"
             />
           </div>
           <div>
@@ -70,81 +75,18 @@ export default function FormBuilderPage() {
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-              placeholder="Brief description"
+              className="w-full border rounded-lg px-3 py-2"
+              placeholder="Enter description"
             />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div className="flex gap-2">
-            <button
-              onClick={() => setMode('dnd')}
-              className={`px-3 py-1.5 rounded text-sm font-medium ${
-                mode === 'dnd' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Drag & Drop
-            </button>
-            <button
-              onClick={() => setMode('simple')}
-              className={`px-3 py-1.5 rounded text-sm font-medium ${
-                mode === 'simple' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Simple
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setActiveTab('build')}
-              className={`px-3 py-1.5 rounded text-sm ${
-                activeTab === 'build' ? 'bg-gray-200 font-medium' : 'bg-gray-100 hover:bg-gray-200'
-              }`}
-            >
-              Build
-            </button>
-            <button
-              onClick={() => setActiveTab('preview')}
-              className={`px-3 py-1.5 rounded text-sm ${
-                activeTab === 'preview' ? 'bg-gray-200 font-medium' : 'bg-gray-100 hover:bg-gray-200'
-              }`}
-            >
-              Preview
-            </button>
           </div>
         </div>
       </div>
 
-      {activeTab === 'build' ? (
-        mode === 'dnd' ? (
-          <div className="bg-white rounded-lg shadow p-6" ref={builderRef}>
-            <FormBuilder
-              form={schema}
-              onChange={(newSchema) => setSchema(newSchema)}
-            />
-          </div>
-        ) : (
-          <SimpleBuilder schema={schema} onChange={setSchema} />
-        )
-      ) : (
-        <FormPreview schema={schema} />
-      )}
-
-      <div className="mt-6 flex gap-3">
-        <button
-          onClick={handleSave}
-          disabled={!name.trim() || saveMutation.isPending}
-          className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saveMutation.isPending ? 'Saving...' : 'Save'}
-        </button>
-        <button
-          onClick={() => navigate('/admin/forms')}
-          className="bg-gray-100 text-gray-700 px-6 py-2 rounded hover:bg-gray-200"
-        >
-          Cancel
-        </button>
+      <div className="bg-white rounded-lg shadow p-6">
+        <SimpleBuilder
+          schema={schema}
+          onChange={setSchema}
+        />
       </div>
     </div>
   );
