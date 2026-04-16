@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DB Architecture — Dynamic Forms Platform</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="header">
+  <h1>Dynamic Forms Platform — Database Architecture</h1>
+  <div class="status">Option C: Fully Normalized with Element-Type Registry</div>
+</div>
+
+<div class="content">
+
+  <h2>Option C: Full Database Structure — A to Z</h2>
+  <p class="subtitle">Complete example: from element type registry &rarr; form building &rarr; user submission</p>
+
+  <!-- ==================== SECTION 1: OVERVIEW ==================== -->
+  <div class="section">
+    <h3>1. The Big Picture — 3 Layers</h3>
+    <div class="layers-grid">
+      <div class="layer-card layer-card--registry">
+        <div class="layer-title layer-title--registry">Layer 1 — Registry</div>
+        <div class="layer-desc">
+          <strong>What CAN exist.</strong><br>
+          Master definitions of element types, their categories, available properties, property groups, and validation rules. Seeded once, rarely changes. Drives both sidebars.
+        </div>
+        <div class="layer-tables">
+          <code class="registry">element_categories</code><br>
+          <code class="registry">element_types</code><br>
+          <code class="registry">property_groups</code><br>
+          <code class="registry">property_definitions</code><br>
+          <code class="registry">element_type_properties</code>
+        </div>
+      </div>
+      <div class="layer-card layer-card--form">
+        <div class="layer-title layer-title--form">Layer 2 — Form Structure</div>
+        <div class="layer-desc">
+          <strong>What DOES exist in a form.</strong><br>
+          Actual forms, their versions, which elements are placed, how they're configured, and their options. Created by admins in the form builder.
+        </div>
+        <div class="layer-tables">
+          <code class="form">forms</code><br>
+          <code class="form">form_versions</code><br>
+          <code class="form">form_elements</code><br>
+          <code class="form">form_element_values</code><br>
+          <code class="form">form_element_options</code>
+        </div>
+      </div>
+      <div class="layer-card layer-card--runtime">
+        <div class="layer-title layer-title--runtime">Layer 3 — Runtime</div>
+        <div class="layer-desc">
+          <strong>What users DO with forms.</strong><br>
+          Sub-apps that use forms, user submissions pinned to a version, and the actual submitted values per field.
+        </div>
+        <div class="layer-tables">
+          <code class="runtime">sub_apps</code><br>
+          <code class="runtime">submissions</code><br>
+          <code class="runtime">submission_values</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SECTION 2: REGISTRY TABLES ==================== -->
+  <div class="section">
+    <h3>2. Layer 1 — Registry Tables (Master Data)</h3>
+    <p class="table-intro">These tables are seeded/managed by the system. They define what element types exist and what properties each type supports. The <strong>left sidebar</strong> (element palette) reads from <code>element_categories</code> + <code>element_types</code>. The <strong>right sidebar</strong> (property editor) reads from <code>property_groups</code> + <code>property_definitions</code> + <code>element_type_properties</code>.</p>
+
+    <!-- element_categories -->
+    <div class="table-block">
+      <div class="table-header">
+        <code>element_categories</code>
+        <span class="table-hint">— Groups in the left sidebar</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>id</th>
+            <th>name</th>
+            <th>label</th>
+            <th>icon</th>
+            <th>display_order</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td class="c-yellow">basic_input</td>
+            <td>Basic Input</td>
+            <td class="c-muted">type</td>
+            <td>1</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td class="c-yellow">selection</td>
+            <td>Selection</td>
+            <td class="c-muted">list</td>
+            <td>2</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td class="c-yellow">layout</td>
+            <td>Layout</td>
+            <td class="c-muted">grid_view</td>
+            <td>3</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td class="c-yellow">advanced</td>
+            <td>Advanced</td>
+            <td class="c-muted">tune</td>
+            <td>4</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- element_types -->
+    <div class="table-block">
+      <div class="table-header">
+        <code>element_types</code>
+        <span class="table-hint">— Draggable items in the left sidebar</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>id</th>
+            <th>category_id</th>
+            <th>name</th>
+            <th>label</th>
+            <th>icon</th>
+            <th>is_layout</th>
+            <th>display_order</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="row-highlight">
+            <td>1</td>
+            <td class="c-blue">1 (Basic)</td>
+            <td class="c-yellow">textfield</td>
+            <td>Text Field</td>
+            <td class="c-muted">text_fields</td>
+            <td class="c-red">false</td>
+            <td>1</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td class="c-blue">1 (Basic)</td>
+            <td class="c-yellow">textarea</td>
+            <td>Text Area</td>
+            <td class="c-muted">notes</td>
+            <td class="c-red">false</td>
+            <td>2</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td class="c-blue">1 (Basic)</td>
+            <td class="c-yellow">number</td>
+            <td>Number</td>
+            <td class="c-muted">pin</td>
+            <td class="c-red">false</td>
+            <td>3</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td class="c-blue">1 (Basic)</td>
+            <td class="c-yellow">email</td>
+            <td>Email</td>
+            <td class="c-muted">mail</td>
+            <td class="c-red">false</td>
+            <td>4</td>
+          </tr>
+          <tr class="row-highlight">
+            <td>5</td>
+            <td class="c-blue">2 (Selection)</td>
+            <td class="c-yellow">select</td>
+            <td>Dropdown</td>
+            <td class="c-muted">arrow_drop_down</td>
+            <td class="c-red">false</td>
+            <td>1</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td class="c-blue">2 (Selection)</td>
+            <td class="c-yellow">radio</td>
+            <td>Radio Group</td>
+            <td class="c-muted">radio_button_checked</td>
+            <td class="c-red">false</td>
+            <td>2</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td class="c-blue">2 (Selection)</td>
+            <td class="c-yellow">checkbox</td>
+            <td>Checkbox</td>
+            <td class="c-muted">check_box</td>
+            <td class="c-red">false</td>
+            <td>3</td>
+          </tr>
+          <tr class="row-green-highlight">
+            <td>8</td>
+            <td class="c-blue">3 (Layout)</td>
+            <td class="c-yellow">row</td>
+            <td>Row</td>
+            <td class="c-muted">view_column</td>
+            <td class="c-green">true</td>
+            <td>1</td>
+          </tr>
+          <tr class="row-green-highlight">
+            <td>9</td>
+            <td class="c-blue">3 (Layout)</td>
+            <td class="c-yellow">column</td>
+            <td>Column</td>
+            <td class="c-muted">view_week</td>
+            <td class="c-green">true</td>
+            <td>2</td>
+          </tr>
+          <tr class="row-green-highlight">
+            <td>10</td>
+            <td class="c-blue">3 (Layout)</td>
+            <td class="c-yellow">table</td>
+            <td>Table</td>
+            <td class="c-muted">table_chart</td>
+            <td class="c-green">true</td>
+            <td>3</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- property_groups -->
+    <div class="table-block">
+      <div class="table-header">
+        <code>property_groups</code>
+        <span class="table-hint">— Sections/tabs in the right sidebar</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>id</th>
+            <th>name</th>
+            <th>label</th>
+            <th>display_order</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td class="c-yellow">general</td>
+            <td>General</td>
+            <td>1</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td class="c-yellow">validation</td>
+            <td>Validation</td>
+            <td>2</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td class="c-yellow">display</td>
+            <td>Display</td>
+            <td>3</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td class="c-yellow">data</td>
+            <td>Data</td>
+            <td>4</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- property_definitions -->
+    <div class="table-block">
+      <div class="table-header">
+        <code>property_definitions</code>
+        <span class="table-hint">— All possible properties any element can have</span>
+      </div>
+      <div class="overflow-x">
+        <table class="compact">
+          <thead>
+            <tr>
+              <th>id</th>
+              <th>group_id</th>
+              <th>name</th>
+              <th>label</th>
+              <th>data_type</th>
+              <th>input_type</th>
+              <th>default_value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- General group -->
+            <tr class="row-general">
+              <td>1</td>
+              <td class="c-blue">1 (General)</td>
+              <td class="c-yellow">label</td>
+              <td>Label</td>
+              <td class="c-purple">string</td>
+              <td class="c-green">text</td>
+              <td class="c-muted"></td>
+            </tr>
+            <tr class="row-general">
+              <td>2</td>
+              <td class="c-blue">1 (General)</td>
+              <td class="c-yellow">placeholder</td>
+              <td>Placeholder</td>
+              <td class="c-purple">string</td>
+              <td class="c-green">text</td>
+              <td class="c-muted"></td>
+            </tr>
+            <tr class="row-general">
+              <td>3</td>
+              <td class="c-blue">1 (General)</td>
+              <td class="c-yellow">description</td>
+              <td>Help Text</td>
+              <td class="c-purple">string</td>
+              <td class="c-green">textarea</td>
+              <td class="c-muted"></td>
+            </tr>
+            <tr class="row-general">
+              <td>4</td>
+              <td class="c-blue">1 (General)</td>
+              <td class="c-yellow">default_value</td>
+              <td>Default Value</td>
+              <td class="c-purple">string</td>
+              <td class="c-green">text</td>
+              <td class="c-muted"></td>
+            </tr>
+            <!-- Validation group -->
+            <tr class="row-validation">
+              <td>5</td>
+              <td class="c-blue">2 (Validation)</td>
+              <td class="c-yellow">required</td>
+              <td>Required</td>
+              <td class="c-purple">boolean</td>
+              <td class="c-green">checkbox</td>
+              <td class="c-muted">false</td>
+            </tr>
+            <tr class="row-validation">
+              <td>6</td>
+              <td class="c-blue">2 (Validation)</td>
+              <td class="c-yellow">min_length</td>
+              <td>Min Length</td>
+              <td class="c-purple">number</td>
+              <td class="c-green">number</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr class="row-validation">
+              <td>7</td>
+              <td class="c-blue">2 (Validation)</td>
+              <td class="c-yellow">max_length</td>
+              <td>Max Length</td>
+              <td class="c-purple">number</td>
+              <td class="c-green">number</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr class="row-validation">
+              <td>8</td>
+              <td class="c-blue">2 (Validation)</td>
+              <td class="c-yellow">min_value</td>
+              <td>Min Value</td>
+              <td class="c-purple">number</td>
+              <td class="c-green">number</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr class="row-validation">
+              <td>9</td>
+              <td class="c-blue">2 (Validation)</td>
+              <td class="c-yellow">max_value</td>
+              <td>Max Value</td>
+              <td class="c-purple">number</td>
+              <td class="c-green">number</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr class="row-validation">
+              <td>10</td>
+              <td class="c-blue">2 (Validation)</td>
+              <td class="c-yellow">pattern</td>
+              <td>Regex Pattern</td>
+              <td class="c-purple">string</td>
+              <td class="c-green">text</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr class="row-validation">
+              <td>11</td>
+              <td class="c-blue">2 (Validation)</td>
+              <td class="c-yellow">custom_error</td>
+              <td>Custom Error Message</td>
+              <td class="c-purple">string</td>
+              <td class="c-green">text</td>
+              <td class="c-muted"></td>
+            </tr>
+            <!-- Display group -->
+            <tr class="row-display">
+              <td>12</td>
+              <td class="c-blue">3 (Display)</td>
+              <td class="c-yellow">hidden</td>
+              <td>Hidden</td>
+              <td class="c-purple">boolean</td>
+              <td class="c-green">checkbox</td>
+              <td class="c-muted">false</td>
+            </tr>
+            <tr class="row-display">
+              <td>13</td>
+              <td class="c-blue">3 (Display)</td>
+              <td class="c-yellow">disabled</td>
+              <td>Disabled</td>
+              <td class="c-purple">boolean</td>
+              <td class="c-green">checkbox</td>
+              <td class="c-muted">false</td>
+            </tr>
+            <tr class="row-display">
+              <td>14</td>
+              <td class="c-blue">3 (Display)</td>
+              <td class="c-yellow">css_class</td>
+              <td>CSS Class</td>
+              <td class="c-purple">string</td>
+              <td class="c-green">text</td>
+              <td class="c-muted"></td>
+            </tr>
+            <!-- Data group -->
+            <tr class="row-data">
+              <td>15</td>
+              <td class="c-blue">4 (Data)</td>
+              <td class="c-yellow">multiple</td>
+              <td>Allow Multiple</td>
+              <td class="c-purple">boolean</td>
+              <td class="c-green">checkbox</td>
+              <td class="c-muted">false</td>
+            </tr>
+            <tr class="row-data">
+              <td>16</td>
+              <td class="c-blue">3 (Display)</td>
+              <td class="c-yellow">rows</td>
+              <td>Rows</td>
+              <td class="c-purple">number</td>
+              <td class="c-green">number</td>
+              <td class="c-muted">3</td>
+            </tr>
+            <tr class="row-data">
+              <td>17</td>
+              <td class="c-blue">3 (Display)</td>
+              <td class="c-yellow">columns</td>
+              <td>Columns</td>
+              <td class="c-purple">number</td>
+              <td class="c-green">number</td>
+              <td class="c-muted">2</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- element_type_properties -->
+    <div class="table-block">
+      <div class="table-header">
+        <code>element_type_properties</code>
+        <span class="table-hint">— Junction: which properties belong to which types</span>
+      </div>
+      <p class="table-intro">This is the key table. When you click a <code>textfield</code> in the builder, the right sidebar queries: <code class="c-yellow">SELECT pd.* FROM element_type_properties etp JOIN property_definitions pd ON ... WHERE etp.element_type_id = 1</code></p>
+      <div class="overflow-x">
+        <table class="compact">
+          <thead>
+            <tr>
+              <th>id</th>
+              <th>element_type_id</th>
+              <th>property_def_id</th>
+              <th>is_required</th>
+              <th>display_order</th>
+              <th>override_default</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="section-divider row-highlight"><td colspan="6">textfield (id=1)</td></tr>
+            <tr>
+              <td>1</td>
+              <td class="c-blue">1 (textfield)</td>
+              <td class="c-purple">1 (label)</td>
+              <td class="c-green">true</td>
+              <td>1</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td class="c-blue">1 (textfield)</td>
+              <td class="c-purple">2 (placeholder)</td>
+              <td class="c-red">false</td>
+              <td>2</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td class="c-blue">1 (textfield)</td>
+              <td class="c-purple">5 (required)</td>
+              <td class="c-red">false</td>
+              <td>3</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td class="c-blue">1 (textfield)</td>
+              <td class="c-purple">6 (min_length)</td>
+              <td class="c-red">false</td>
+              <td>4</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td class="c-blue">1 (textfield)</td>
+              <td class="c-purple">7 (max_length)</td>
+              <td class="c-red">false</td>
+              <td>5</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td class="c-blue">1 (textfield)</td>
+              <td class="c-purple">10 (pattern)</td>
+              <td class="c-red">false</td>
+              <td>6</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr>
+              <td>7</td>
+              <td class="c-blue">1 (textfield)</td>
+              <td class="c-purple">11 (custom_error)</td>
+              <td class="c-red">false</td>
+              <td>7</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr class="section-divider row-highlight"><td colspan="6">select / dropdown (id=5)</td></tr>
+            <tr>
+              <td>8</td>
+              <td class="c-blue">5 (select)</td>
+              <td class="c-purple">1 (label)</td>
+              <td class="c-green">true</td>
+              <td>1</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr>
+              <td>9</td>
+              <td class="c-blue">5 (select)</td>
+              <td class="c-purple">2 (placeholder)</td>
+              <td class="c-red">false</td>
+              <td>2</td>
+              <td class="c-yellow">Select...</td>
+            </tr>
+            <tr>
+              <td>10</td>
+              <td class="c-blue">5 (select)</td>
+              <td class="c-purple">5 (required)</td>
+              <td class="c-red">false</td>
+              <td>3</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr>
+              <td>11</td>
+              <td class="c-blue">5 (select)</td>
+              <td class="c-purple">15 (multiple)</td>
+              <td class="c-red">false</td>
+              <td>4</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+            <tr class="section-divider row-highlight"><td colspan="6">row (id=8) — layout element</td></tr>
+            <tr>
+              <td>12</td>
+              <td class="c-blue">8 (row)</td>
+              <td class="c-purple">17 (columns)</td>
+              <td class="c-green">true</td>
+              <td>1</td>
+              <td class="c-yellow">2</td>
+            </tr>
+            <tr>
+              <td>13</td>
+              <td class="c-blue">8 (row)</td>
+              <td class="c-purple">14 (css_class)</td>
+              <td class="c-red">false</td>
+              <td>2</td>
+              <td class="c-muted">NULL</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-note">Notice: <code>textfield</code> gets label + placeholder + required + min/max length + pattern. <code>select</code> gets label + placeholder + required + multiple (but NOT min/max length). <code>row</code> only gets columns + css_class. The right sidebar renders exactly what this table says.</p>
+    </div>
+
+    <!-- condition_action_types -->
+    <div class="table-block">
+      <div class="table-header">
+        <code>condition_action_types</code>
+        <span class="table-hint">— What actions a condition can trigger on a field</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>id</th>
+            <th>name</th>
+            <th>label</th>
+            <th>display_order</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td class="c-yellow">show</td>
+            <td>Show</td>
+            <td>1</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td class="c-yellow">hide</td>
+            <td>Hide</td>
+            <td>2</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td class="c-yellow">require</td>
+            <td>Make Required</td>
+            <td>3</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td class="c-yellow">unrequire</td>
+            <td>Make Optional</td>
+            <td>4</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td class="c-yellow">set_value</td>
+            <td>Set Value</td>
+            <td>5</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td class="c-yellow">disable</td>
+            <td>Disable</td>
+            <td>6</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td class="c-yellow">enable</td>
+            <td>Enable</td>
+            <td>7</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- condition_operators -->
+    <div class="table-block">
+      <div class="table-header">
+        <code>condition_operators</code>
+        <span class="table-hint">— Comparison operators for condition rules</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>id</th>
+            <th>name</th>
+            <th>label</th>
+            <th>display_order</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td class="c-yellow">equals</td>
+            <td>Equals</td>
+            <td>1</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td class="c-yellow">not_equals</td>
+            <td>Does Not Equal</td>
+            <td>2</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td class="c-yellow">contains</td>
+            <td>Contains</td>
+            <td>3</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td class="c-yellow">not_contains</td>
+            <td>Does Not Contain</td>
+            <td>4</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td class="c-yellow">greater_than</td>
+            <td>Greater Than</td>
+            <td>5</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td class="c-yellow">less_than</td>
+            <td>Less Than</td>
+            <td>6</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td class="c-yellow">is_empty</td>
+            <td>Is Empty</td>
+            <td>7</td>
+          </tr>
+          <tr>
+            <td>8</td>
+            <td class="c-yellow">is_not_empty</td>
+            <td>Is Not Empty</td>
+            <td>8</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== SECTION 3: FORM STRUCTURE TABLES ==================== -->
+  <div class="section">
+    <h3>3. Layer 2 — Form Structure (Admin Creates a Form)</h3>
+    <p class="table-intro">Scenario: Admin creates an <strong>&ldquo;Employee Onboarding&rdquo;</strong> form with a Row (2 columns) containing First Name and Last Name, plus a Department dropdown below.</p>
+
+    <!-- forms -->
+    <div class="table-block">
+      <div class="table-header table-header--form"><code>forms</code></div>
+      <table>
+        <thead><tr>
+          <th>id</th><th>name</th><th>description</th><th>current_version</th>
+        </tr></thead>
+        <tbody><tr>
+          <td>1</td>
+          <td class="c-yellow">Employee Onboarding</td>
+          <td>New hire intake form</td>
+          <td>1</td>
+        </tr></tbody>
+      </table>
+    </div>
+
+    <!-- form_versions -->
+    <div class="table-block">
+      <div class="table-header table-header--form">
+        <code>form_versions</code>
+        <span class="table-hint">— No more schema JSON column!</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>id</th><th>form_id</th><th>version_num</th><th>created_at</th>
+        </tr></thead>
+        <tbody><tr>
+          <td>1</td>
+          <td class="c-green">1</td>
+          <td>1</td>
+          <td class="c-muted">2026-04-16 10:00:00</td>
+        </tr></tbody>
+      </table>
+    </div>
+
+    <!-- form_elements -->
+    <div class="table-block">
+      <div class="table-header table-header--form">
+        <code>form_elements</code>
+        <span class="table-hint">— The tree structure of the form</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>id</th><th>form_version_id</th><th>element_type_id</th><th>element_key</th><th>position</th><th>parent_id</th>
+        </tr></thead>
+        <tbody>
+          <tr class="row-green-strong">
+            <td>1</td>
+            <td class="c-green">1</td>
+            <td class="c-blue">8 (row)</td>
+            <td class="c-yellow">name_row</td>
+            <td>0</td>
+            <td class="c-muted">NULL <span class="c-dim">&larr; root level</span></td>
+          </tr>
+          <tr class="row-green-subtle">
+            <td>2</td>
+            <td class="c-green">1</td>
+            <td class="c-blue">1 (textfield)</td>
+            <td class="c-yellow">first_name</td>
+            <td>0</td>
+            <td class="c-green">1 <span class="c-dim">&larr; inside the row</span></td>
+          </tr>
+          <tr class="row-green-subtle">
+            <td>3</td>
+            <td class="c-green">1</td>
+            <td class="c-blue">1 (textfield)</td>
+            <td class="c-yellow">last_name</td>
+            <td>1</td>
+            <td class="c-green">1 <span class="c-dim">&larr; inside the row</span></td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td class="c-green">1</td>
+            <td class="c-blue">5 (select)</td>
+            <td class="c-yellow">department</td>
+            <td>1</td>
+            <td class="c-muted">NULL <span class="c-dim">&larr; root level</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="tree-box">
+        <div class="tree-label">TREE VISUALIZATION</div>
+        <pre>Form Version 1
+├── [pos:0] Row (name_row)              &larr; parent_id: NULL
+│   ├── [pos:0] TextField (first_name)  &larr; parent_id: 1
+│   └── [pos:1] TextField (last_name)   &larr; parent_id: 1
+└── [pos:1] Select (department)         &larr; parent_id: NULL</pre>
+      </div>
+    </div>
+
+    <!-- form_element_values -->
+    <div class="table-block">
+      <div class="table-header table-header--form">
+        <code>form_element_values</code>
+        <span class="table-hint">— Configured property values for each placed element</span>
+      </div>
+      <table class="compact">
+        <thead><tr>
+          <th>id</th><th>form_element_id</th><th>property_def_id</th><th>value</th><th>meaning</th>
+        </tr></thead>
+        <tbody>
+          <tr class="section-divider section-divider--green row-green-highlight"><td colspan="5">Row — name_row (element_id=1)</td></tr>
+          <tr>
+            <td>1</td>
+            <td class="c-green">1 (name_row)</td>
+            <td class="c-purple">17 (columns)</td>
+            <td class="c-yellow">2</td>
+            <td class="c-muted c-italic">2 columns in this row</td>
+          </tr>
+          <tr class="section-divider section-divider--green row-green-highlight"><td colspan="5">TextField — first_name (element_id=2)</td></tr>
+          <tr>
+            <td>2</td>
+            <td class="c-green">2 (first_name)</td>
+            <td class="c-purple">1 (label)</td>
+            <td class="c-yellow">First Name</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td class="c-green">2 (first_name)</td>
+            <td class="c-purple">2 (placeholder)</td>
+            <td class="c-yellow">Enter first name</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td class="c-green">2 (first_name)</td>
+            <td class="c-purple">5 (required)</td>
+            <td class="c-yellow">true</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td class="c-green">2 (first_name)</td>
+            <td class="c-purple">7 (max_length)</td>
+            <td class="c-yellow">100</td>
+            <td></td>
+          </tr>
+          <tr class="section-divider section-divider--green row-green-highlight"><td colspan="5">TextField — last_name (element_id=3)</td></tr>
+          <tr>
+            <td>6</td>
+            <td class="c-green">3 (last_name)</td>
+            <td class="c-purple">1 (label)</td>
+            <td class="c-yellow">Last Name</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td class="c-green">3 (last_name)</td>
+            <td class="c-purple">5 (required)</td>
+            <td class="c-yellow">true</td>
+            <td></td>
+          </tr>
+          <tr class="section-divider section-divider--green row-green-highlight"><td colspan="5">Select — department (element_id=4)</td></tr>
+          <tr>
+            <td>8</td>
+            <td class="c-green">4 (department)</td>
+            <td class="c-purple">1 (label)</td>
+            <td class="c-yellow">Department</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>9</td>
+            <td class="c-green">4 (department)</td>
+            <td class="c-purple">2 (placeholder)</td>
+            <td class="c-yellow">Select department...</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td class="c-green">4 (department)</td>
+            <td class="c-purple">5 (required)</td>
+            <td class="c-yellow">true</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- form_element_options -->
+    <div class="table-block">
+      <div class="table-header table-header--form">
+        <code>form_element_options</code>
+        <span class="table-hint">— Dropdown/radio/checkbox choices (fully relational, not JSON)</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>id</th><th>form_element_id</th><th>label</th><th>value</th><th>display_order</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td class="c-green">4 (department)</td>
+            <td>Human Resources</td>
+            <td class="c-yellow">hr</td>
+            <td>0</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td class="c-green">4 (department)</td>
+            <td>Engineering</td>
+            <td class="c-yellow">eng</td>
+            <td>1</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td class="c-green">4 (department)</td>
+            <td>Finance</td>
+            <td class="c-yellow">finance</td>
+            <td>2</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== SECTION 4: RUNTIME TABLES ==================== -->
+  <div class="section">
+    <h3>4. Layer 3 — Runtime (User Submits the Form)</h3>
+    <p class="table-intro">Scenario: Sub-app &ldquo;New Hire Portal&rdquo; uses the Employee Onboarding form. User &ldquo;ahmed&rdquo; fills it out.</p>
+
+    <!-- sub_apps -->
+    <div class="table-block">
+      <div class="table-header table-header--runtime"><code>sub_apps</code></div>
+      <table>
+        <thead><tr>
+          <th>id</th><th>name</th><th>form_id</th>
+        </tr></thead>
+        <tbody><tr>
+          <td>1</td>
+          <td class="c-yellow">New Hire Portal</td>
+          <td class="c-purple">1 (Employee Onboarding)</td>
+        </tr></tbody>
+      </table>
+    </div>
+
+    <!-- submissions -->
+    <div class="table-block">
+      <div class="table-header table-header--runtime">
+        <code>submissions</code>
+        <span class="table-hint">— No more data JSON column!</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>id</th><th>sub_app_id</th><th>form_version_id</th><th>user_id</th><th>status</th>
+        </tr></thead>
+        <tbody><tr>
+          <td>1</td>
+          <td class="c-purple">1 (New Hire Portal)</td>
+          <td class="c-purple">1 (v1)</td>
+          <td class="c-yellow">ahmed</td>
+          <td class="c-green">submitted</td>
+        </tr></tbody>
+      </table>
+    </div>
+
+    <!-- submission_values -->
+    <div class="table-block">
+      <div class="table-header table-header--runtime">
+        <code>submission_values</code>
+        <span class="table-hint">— Each field answer is its own row</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>id</th><th>submission_id</th><th>form_element_id</th><th>value</th><th>meaning</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td class="c-purple">1</td>
+            <td class="c-green">2 (first_name)</td>
+            <td class="c-yellow">Ahmed</td>
+            <td class="c-muted c-italic">User typed &ldquo;Ahmed&rdquo;</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td class="c-purple">1</td>
+            <td class="c-green">3 (last_name)</td>
+            <td class="c-yellow">Hassan</td>
+            <td class="c-muted c-italic">User typed &ldquo;Hassan&rdquo;</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td class="c-purple">1</td>
+            <td class="c-green">4 (department)</td>
+            <td class="c-yellow">eng</td>
+            <td class="c-muted c-italic">User selected &ldquo;Engineering&rdquo;</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="table-note">Note: layout elements (like the row) have no submission values — only input elements do.</p>
+    </div>
+  </div>
+
+  <!-- ==================== SECTION 4B: CONDITIONAL LOGIC ==================== -->
+  <div class="section">
+    <h3>4b. Conditional Logic (Spans Form Structure + Registry)</h3>
+    <p class="table-intro">Scenario: On the Employee Onboarding form, when Department = &ldquo;Engineering&rdquo;, show a &ldquo;Tech Stack&rdquo; field and make it required. Each condition group targets one element, has an action, and contains one or more rules combined with AND/OR logic.</p>
+
+    <!-- form_element_conditions -->
+    <div class="table-block">
+      <div class="table-header" style="color:#f59e0b;">
+        <code style="color:#f59e0b;">form_element_conditions</code>
+        <span class="table-hint">— Condition groups: &ldquo;When these rules are met, do this action&rdquo;</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>id</th><th>form_element_id</th><th>action_type_id</th><th>action_value</th><th>logic_operator</th><th>display_order</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td class="c-green">5 (tech_stack)</td>
+            <td class="c-blue">1 (show)</td>
+            <td class="c-muted">NULL</td>
+            <td class="c-yellow">AND</td>
+            <td>0</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td class="c-green">5 (tech_stack)</td>
+            <td class="c-blue">3 (require)</td>
+            <td class="c-muted">NULL</td>
+            <td class="c-yellow">AND</td>
+            <td>1</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="table-note">Two separate condition groups on the same element: one to show it, one to make it required. Both trigger when dept = engineering.</p>
+    </div>
+
+    <!-- form_element_condition_rules -->
+    <div class="table-block">
+      <div class="table-header" style="color:#f59e0b;">
+        <code style="color:#f59e0b;">form_element_condition_rules</code>
+        <span class="table-hint">— Individual rules within a condition group</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>id</th><th>condition_id</th><th>source_element_id</th><th>operator_id</th><th>value</th><th>display_order</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td style="color:#f59e0b;">1 (show tech_stack)</td>
+            <td class="c-green">4 (department)</td>
+            <td class="c-blue">1 (equals)</td>
+            <td class="c-yellow">eng</td>
+            <td>0</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td style="color:#f59e0b;">2 (require tech_stack)</td>
+            <td class="c-green">4 (department)</td>
+            <td class="c-blue">1 (equals)</td>
+            <td class="c-yellow">eng</td>
+            <td>0</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="table-note">Each rule says: &ldquo;check [source_element] [operator] [value]&rdquo;. Multiple rules in a group are combined by the group's logic_operator (AND/OR).</p>
+    </div>
+
+    <div class="tree-box" style="border-left-color:#f59e0b;">
+      <div class="tree-label" style="color:#f59e0b;">CONDITION LOGIC VISUALIZATION</div>
+      <pre>tech_stack field:
+  Condition 1 (action: SHOW):
+    WHEN department EQUALS "eng"    &rarr; show this field
+  Condition 2 (action: REQUIRE):
+    WHEN department EQUALS "eng"    &rarr; make this field required
+
+At runtime, the form renderer evaluates these conditions
+as the user fills the form, showing/hiding and toggling
+validation in real-time.</pre>
+    </div>
+  </div>
+
+  <!-- ==================== SECTION 5: HOW THE SIDEBARS WORK ==================== -->
+  <div class="section">
+    <h3>5. How the Two Sidebars Are Driven From DB</h3>
+
+    <div class="sidebars-grid">
+      <!-- Left sidebar -->
+      <div class="sidebar-mock sidebar-mock--left">
+        <div class="sidebar-mock__title sidebar-mock__title--left">LEFT SIDEBAR — Element Palette</div>
+        <div class="sidebar-mock__query">
+          Query: <code>SELECT et.*, ec.label as category FROM element_types et JOIN element_categories ec ON et.category_id = ec.id ORDER BY ec.display_order, et.display_order</code>
+        </div>
+        <div class="sidebar-mock__panel">
+          <div class="category-label">Basic Input</div>
+          <div class="element-chips">
+            <span class="element-chip">Aa Text Field</span>
+            <span class="element-chip">Text Area</span>
+            <span class="element-chip"># Number</span>
+            <span class="element-chip">@ Email</span>
+          </div>
+          <div class="category-label">Selection</div>
+          <div class="element-chips">
+            <span class="element-chip">Dropdown</span>
+            <span class="element-chip">Radio</span>
+            <span class="element-chip">Checkbox</span>
+          </div>
+          <div class="category-label">Layout</div>
+          <div class="element-chips">
+            <span class="element-chip element-chip--layout">Row</span>
+            <span class="element-chip element-chip--layout">Column</span>
+            <span class="element-chip element-chip--layout">Table</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right sidebar -->
+      <div class="sidebar-mock sidebar-mock--right">
+        <div class="sidebar-mock__title sidebar-mock__title--right">RIGHT SIDEBAR — Property Editor</div>
+        <div class="sidebar-mock__query">
+          When user clicks a textfield, query: <code>SELECT pd.*, pg.label as group, etp.is_required FROM element_type_properties etp JOIN property_definitions pd ... WHERE etp.element_type_id = 1</code>
+        </div>
+        <div class="sidebar-mock__panel">
+          <div class="prop-editor__title">Text Field — first_name</div>
+
+          <div class="category-label">General</div>
+          <div class="prop-field">
+            <div class="prop-field__label">Label <span class="required">*</span></div>
+            <div class="prop-field__input">First Name</div>
+          </div>
+          <div class="prop-field">
+            <div class="prop-field__label">Placeholder</div>
+            <div class="prop-field__input">Enter first name</div>
+          </div>
+
+          <div class="category-label" style="margin-top:12px;">Validation</div>
+          <div class="prop-checkbox">
+            <div class="prop-checkbox__box">&#10003;</div>
+            <div class="prop-checkbox__label">Required</div>
+          </div>
+          <div class="prop-field">
+            <div class="prop-field__label">Max Length</div>
+            <div class="prop-field__input">100</div>
+          </div>
+          <div class="prop-field">
+            <div class="prop-field__label">Min Length</div>
+            <div class="prop-field__input prop-field__input--empty">&mdash;</div>
+          </div>
+          <div class="prop-field">
+            <div class="prop-field__label">Custom Error</div>
+            <div class="prop-field__input prop-field__input--empty">&mdash;</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SECTION 6: RELATIONSHIP MAP ==================== -->
+  <div class="section">
+    <h3>6. Full Relationship Map</h3>
+    <div class="relationship-map">
+      <pre>
+<span class="r-blue">&#9484;&#9472; REGISTRY (Layer 1) &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;</span>
+<span class="r-blue">&#9474;                                                                      &#9474;</span>
+<span class="r-blue">&#9474;  element_categories  &#9472;&#9472;1:N&#9472;&#9472;&#9654;  element_types                         &#9474;</span>
+<span class="r-blue">&#9474;                                    &#9474;                                 &#9474;</span>
+<span class="r-blue">&#9474;                                    &#9474; N:M (via element_type_properties)&#9474;</span>
+<span class="r-blue">&#9474;                                    &#9660;                                 &#9474;</span>
+<span class="r-blue">&#9474;  property_groups  &#9472;&#9472;1:N&#9472;&#9472;&#9654;  property_definitions                     &#9474;</span>
+<span class="r-blue">&#9474;                                                                      &#9474;</span>
+<span class="r-blue">&#9474;  condition_action_types     condition_operators                        &#9474;</span>
+<span class="r-blue">&#9474;  (show, hide, require,      (equals, not_equals,                      &#9474;</span>
+<span class="r-blue">&#9474;   set_value, disable...)     contains, gt, lt...)                     &#9474;</span>
+<span class="r-blue">&#9474;                                                                      &#9474;</span>
+<span class="r-blue">&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</span>
+          &#9474; element_types.id                      &#9474; property_definitions.id
+          &#9474; condition_action_types.id              &#9474; condition_operators.id
+          &#9660;                                       &#9660;
+<span class="r-green">&#9484;&#9472; FORM STRUCTURE (Layer 2) &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;</span>
+<span class="r-green">&#9474;                                                                      &#9474;</span>
+<span class="r-green">&#9474;  forms  &#9472;&#9472;1:N&#9472;&#9472;&#9654;  form_versions  &#9472;&#9472;1:N&#9472;&#9472;&#9654;  form_elements             &#9474;</span>
+<span class="r-green">&#9474;                                              &#9474;       &#9474;               &#9474;</span>
+<span class="r-green">&#9474;                                              &#9474;       &#9474; self-ref      &#9474;</span>
+<span class="r-green">&#9474;                                              &#9474;       &#9492;&#9472;&#9472;&#9654; parent_id  &#9474;</span>
+<span class="r-green">&#9474;                                              &#9474;                       &#9474;</span>
+<span class="r-green">&#9474;                                              &#9500;&#9472;&#9472;1:N&#9472;&#9472;&#9654; form_element_values    &#9474;</span>
+<span class="r-green">&#9474;                                              &#9500;&#9472;&#9472;1:N&#9472;&#9472;&#9654; form_element_options   &#9474;</span>
+<span class="r-green">&#9474;                                              &#9492;&#9472;&#9472;1:N&#9472;&#9472;&#9654; form_element_conditions&#9474;</span>
+<span class="r-green">&#9474;                                                       &#9474;              &#9474;</span>
+<span class="r-green">&#9474;                                                       &#9492;&#9472;&#9472;1:N&#9472;&#9472;&#9654;     &#9474;</span>
+<span class="r-green">&#9474;                                              form_element_condition_rules&#9474;</span>
+<span class="r-green">&#9474;                                                                      &#9474;</span>
+<span class="r-green">&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</span>
+          &#9474; forms.id              &#9474; form_versions.id     &#9474; form_elements.id
+          &#9660;                       &#9660;                      &#9660;
+<span class="r-purple">&#9484;&#9472; RUNTIME (Layer 3) &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;</span>
+<span class="r-purple">&#9474;                                                                      &#9474;</span>
+<span class="r-purple">&#9474;  sub_apps  &#9472;&#9472;1:N&#9472;&#9472;&#9654;  submissions  &#9472;&#9472;1:N&#9472;&#9472;&#9654;  submission_values        &#9474;</span>
+<span class="r-purple">&#9474;  (form_id)           (form_version_id)       (form_element_id)       &#9474;</span>
+<span class="r-purple">&#9474;                                                                      &#9474;</span>
+<span class="r-purple">&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</span></pre>
+    </div>
+  </div>
+
+  <!-- ==================== SECTION 7: KEY QUERY EXAMPLES ==================== -->
+  <div class="section">
+    <h3>7. Key Queries the App Would Run</h3>
+
+    <div class="queries-grid">
+      <div class="query-block">
+        <div class="query-block__title query-block__title--blue">Load left sidebar (element palette)</div>
+        <pre>SELECT et.id, et.name, et.label, et.icon, et.is_layout,
+       ec.label as category_label, ec.name as category_name
+FROM element_types et
+JOIN element_categories ec ON et.category_id = ec.id
+ORDER BY ec.display_order, et.display_order;</pre>
+      </div>
+
+      <div class="query-block">
+        <div class="query-block__title query-block__title--purple">Load right sidebar when clicking a textfield</div>
+        <pre>SELECT pd.id, pd.name, pd.label, pd.data_type, pd.input_type,
+       pd.default_value, pg.label as group_label, pg.name as group_name,
+       etp.is_required, etp.override_default, etp.display_order
+FROM element_type_properties etp
+JOIN property_definitions pd ON etp.property_definition_id = pd.id
+JOIN property_groups pg ON pd.property_group_id = pg.id
+WHERE etp.element_type_id = ?  <span class="comment">-- the clicked element's type</span>
+ORDER BY pg.display_order, etp.display_order;</pre>
+      </div>
+
+      <div class="query-block">
+        <div class="query-block__title query-block__title--green">Reconstruct full form for rendering</div>
+        <pre>SELECT fe.id, fe.element_key, fe.position, fe.parent_id,
+       et.name as type, et.is_layout,
+       fev.value as prop_value, pd.name as prop_name, pd.data_type
+FROM form_elements fe
+JOIN element_types et ON fe.element_type_id = et.id
+LEFT JOIN form_element_values fev ON fev.form_element_id = fe.id
+LEFT JOIN property_definitions pd ON fev.property_definition_id = pd.id
+WHERE fe.form_version_id = ?
+ORDER BY fe.parent_id NULLS FIRST, fe.position;</pre>
+        <div class="note">+ separate query for options: <code>SELECT * FROM form_element_options WHERE form_element_id IN (...)</code></div>
+      </div>
+
+      <div class="query-block">
+        <div class="query-block__title" style="color:#f59e0b;">Load conditions for form elements (for rendering + builder)</div>
+        <pre>SELECT fec.id as condition_id, fec.form_element_id as target_id,
+       cat.name as action, fec.action_value, fec.logic_operator,
+       fecr.source_element_id, fe_src.element_key as source_key,
+       co.name as operator, fecr.value
+FROM form_element_conditions fec
+JOIN condition_action_types cat ON fec.action_type_id = cat.id
+JOIN form_element_condition_rules fecr ON fecr.condition_id = fec.id
+JOIN condition_operators co ON fecr.operator_id = co.id
+JOIN form_elements fe_src ON fecr.source_element_id = fe_src.id
+WHERE fec.form_element_id IN (
+  SELECT id FROM form_elements WHERE form_version_id = ?
+)
+ORDER BY fec.form_element_id, fec.display_order, fecr.display_order;</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SECTION 8: SUMMARY ==================== -->
+  <div class="section">
+    <h3>8. Total: 17 Tables</h3>
+    <div class="summary-grid">
+      <div>
+        <div class="summary-group__title summary-group__title--blue">Registry (7)</div>
+        <div class="summary-group__list">
+          1. element_categories<br>
+          2. element_types<br>
+          3. property_groups<br>
+          4. property_definitions<br>
+          5. element_type_properties<br>
+          6. condition_action_types<br>
+          7. condition_operators
+        </div>
+      </div>
+      <div>
+        <div class="summary-group__title summary-group__title--green">Form Structure (7)</div>
+        <div class="summary-group__list">
+          8. forms<br>
+          9. form_versions<br>
+          10. form_elements<br>
+          11. form_element_values<br>
+          12. form_element_options<br>
+          13. form_element_conditions<br>
+          14. form_element_condition_rules
+        </div>
+      </div>
+      <div>
+        <div class="summary-group__title summary-group__title--purple">Runtime (3)</div>
+        <div class="summary-group__list">
+          15. sub_apps<br>
+          16. submissions<br>
+          17. submission_values
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
