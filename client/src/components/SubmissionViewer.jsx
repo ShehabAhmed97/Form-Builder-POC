@@ -4,6 +4,52 @@ export default function SubmissionViewer({ submission }) {
   const values = submission.values || {};
   const entries = Object.entries(values);
 
+  const renderValue = (key, value) => {
+    // Data table: array of row objects
+    if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'object') {
+      const columns = Object.keys(value[0]);
+      return (
+        <div key={key} className="mb-4">
+          <div className="text-xs font-medium text-gray-500 mb-1">{key}</div>
+          <div className="border rounded-lg overflow-hidden">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50">
+                  {columns.map(col => (
+                    <th key={col} className="border border-gray-200 px-3 py-1.5 text-left text-xs font-semibold text-gray-600">
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {value.map((row, i) => (
+                  <tr key={i}>
+                    {columns.map(col => (
+                      <td key={col} className="border border-gray-200 px-3 py-1.5 text-sm text-gray-800">
+                        {String(row[col] ?? '—')}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // Flat value (existing behavior)
+    return (
+      <div key={key}>
+        <div className="text-xs font-medium text-gray-500">{key}</div>
+        <div className="text-sm text-gray-800 mt-0.5">
+          {typeof value === 'object' ? JSON.stringify(value) : String(value) || '—'}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -26,14 +72,7 @@ export default function SubmissionViewer({ submission }) {
         <p className="text-sm text-gray-400 italic">No values submitted</p>
       ) : (
         <div className="space-y-3">
-          {entries.map(([key, value]) => (
-            <div key={key}>
-              <div className="text-xs font-medium text-gray-500">{key}</div>
-              <div className="text-sm text-gray-800 mt-0.5">
-                {typeof value === 'object' ? JSON.stringify(value) : String(value) || '—'}
-              </div>
-            </div>
-          ))}
+          {entries.map(([key, value]) => renderValue(key, value))}
         </div>
       )}
     </div>
