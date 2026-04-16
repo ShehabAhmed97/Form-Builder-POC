@@ -9,6 +9,7 @@ export default function FormBuilderLayout({
   onAddElement,
   onDropElement,
   onMoveElement,
+  onMoveToParent,
   onRemoveElement,
   onSelectElement,
   onUpdateValue,
@@ -30,6 +31,7 @@ export default function FormBuilderLayout({
           onSelect={onSelectElement}
           onDrop={onDropElement}
           onMove={onMoveElement}
+          onMoveToParent={onMoveToParent}
           onRemove={onRemoveElement}
         />
       </div>

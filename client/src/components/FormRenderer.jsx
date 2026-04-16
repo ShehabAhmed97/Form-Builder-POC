@@ -199,9 +199,14 @@ export function RelationalFormRenderer({ elements, onSubmit }) {
   const [values, setValues] = useState({});
   const [errors, setErrors] = useState({});
 
-  const inputElements = elements
-    .filter(el => !el.parent_key && !el.is_layout && !['heading', 'subheading', 'text'].includes(el.type_name))
-    .sort((a, b) => a.position - b.position);
+  const getChildren = (parentKey) =>
+    elements
+      .filter(e => e.parent_key === (parentKey || null))
+      .sort((a, b) => a.position - b.position);
+
+  const inputElements = elements.filter(
+    el => !el.is_layout && !['heading', 'subheading', 'text'].includes(el.type_name)
+  );
 
   const handleChange = (key, value) => {
     setValues(prev => ({ ...prev, [key]: value }));
@@ -212,21 +217,21 @@ export function RelationalFormRenderer({ elements, onSubmit }) {
     const newErrors = {};
     for (const el of inputElements) {
       const val = values[el.element_key];
-      if (el.values.required === 'true' && (!val || val === '')) {
+      if (el.values.required === 'true' && (!val || val === '' || (Array.isArray(val) && val.length === 0))) {
         newErrors[el.element_key] = el.values.custom_error || `${el.values.label || el.element_key} is required`;
       }
-      if (el.values.min_length && val && val.length < Number(el.values.min_length)) {
+      if (el.values.min_length && val && String(val).length < Number(el.values.min_length)) {
         newErrors[el.element_key] = el.values.custom_error || `Minimum ${el.values.min_length} characters`;
       }
-      if (el.values.max_length && val && val.length > Number(el.values.max_length)) {
+      if (el.values.max_length && val && String(val).length > Number(el.values.max_length)) {
         newErrors[el.element_key] = el.values.custom_error || `Maximum ${el.values.max_length} characters`;
       }
       if (el.values.pattern && val) {
         try {
-          if (!new RegExp(el.values.pattern).test(val)) {
+          if (!new RegExp(el.values.pattern).test(String(val))) {
             newErrors[el.element_key] = el.values.custom_error || 'Invalid format';
           }
-        } catch { /* invalid regex, skip */ }
+        } catch { /* invalid regex */ }
       }
     }
     return newErrors;
@@ -243,77 +248,108 @@ export function RelationalFormRenderer({ elements, onSubmit }) {
   };
 
   const renderField = (el) => {
-    const value = values[el.element_key] || '';
+    const value = values[el.element_key] ?? '';
     const error = errors[el.element_key];
     const label = el.values.label || el.element_key;
     const placeholder = el.values.placeholder || '';
     const required = el.values.required === 'true';
+    const disabled = el.values.disabled === 'true';
 
     const inputClass = `w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${
       error ? 'border-red-500' : 'border-gray-300'
-    }`;
+    } ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`;
 
     let input;
     switch (el.type_name) {
       case 'textarea':
-        input = (
-          <textarea
-            value={value}
-            onChange={(e) => handleChange(el.element_key, e.target.value)}
-            placeholder={placeholder}
-            rows={Number(el.values.rows) || 3}
-            className={inputClass}
-          />
-        );
+        input = <textarea value={value} onChange={e => handleChange(el.element_key, e.target.value)} placeholder={placeholder} rows={Number(el.values.rows) || 3} disabled={disabled} className={inputClass} />;
         break;
       case 'number':
-        input = (
-          <input
-            type="number"
-            value={value}
-            onChange={(e) => handleChange(el.element_key, e.target.value)}
-            placeholder={placeholder}
-            min={el.values.min_value}
-            max={el.values.max_value}
-            className={inputClass}
-          />
-        );
+        input = <input type="number" value={value} onChange={e => handleChange(el.element_key, e.target.value)} placeholder={placeholder} min={el.values.min_value} max={el.values.max_value} disabled={disabled} className={inputClass} />;
         break;
       case 'email':
-        input = (
-          <input
-            type="email"
-            value={value}
-            onChange={(e) => handleChange(el.element_key, e.target.value)}
-            placeholder={placeholder}
-            className={inputClass}
-          />
-        );
+        input = <input type="email" value={value} onChange={e => handleChange(el.element_key, e.target.value)} placeholder={placeholder} disabled={disabled} className={inputClass} />;
+        break;
+      case 'phone':
+        input = <input type="tel" value={value} onChange={e => handleChange(el.element_key, e.target.value)} placeholder={placeholder} disabled={disabled} className={inputClass} />;
+        break;
+      case 'date':
+        input = <input type="date" value={value} onChange={e => handleChange(el.element_key, e.target.value)} disabled={disabled} className={inputClass} />;
+        break;
+      case 'time':
+        input = <input type="time" value={value} onChange={e => handleChange(el.element_key, e.target.value)} disabled={disabled} className={inputClass} />;
+        break;
+      case 'datetime':
+        input = <input type="datetime-local" value={value} onChange={e => handleChange(el.element_key, e.target.value)} disabled={disabled} className={inputClass} />;
         break;
       case 'select':
         input = (
-          <select
-            value={value}
-            onChange={(e) => handleChange(el.element_key, e.target.value)}
-            className={inputClass}
-          >
+          <select value={value} onChange={e => handleChange(el.element_key, e.target.value)} disabled={disabled} className={inputClass}>
             <option value="">{placeholder || 'Select...'}</option>
-            {(el.options || []).map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
+            {(el.options || []).map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
           </select>
         );
         break;
-      default:
+      case 'radio':
         input = (
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => handleChange(el.element_key, e.target.value)}
-            placeholder={placeholder}
-            className={inputClass}
-          />
+          <div className="space-y-2">
+            {(el.options || []).map(opt => (
+              <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name={el.element_key} value={opt.value} checked={value === opt.value} onChange={e => handleChange(el.element_key, e.target.value)} disabled={disabled} className="text-blue-600" />
+                <span className="text-sm">{opt.label}</span>
+              </label>
+            ))}
+          </div>
         );
+        break;
+      case 'checkbox':
+        input = (
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={value === 'true'} onChange={e => handleChange(el.element_key, e.target.checked ? 'true' : 'false')} disabled={disabled} className="rounded text-blue-600" />
+            <span className="text-sm">{label}</span>
+          </label>
+        );
+        break;
+      case 'checkbox_group':
+        input = (
+          <div className="space-y-2">
+            {(el.options || []).map(opt => (
+              <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={(Array.isArray(value) ? value : []).includes(opt.value)} onChange={e => {
+                  const current = Array.isArray(value) ? value : [];
+                  const next = e.target.checked ? [...current, opt.value] : current.filter(v => v !== opt.value);
+                  handleChange(el.element_key, next);
+                }} disabled={disabled} className="rounded text-blue-600" />
+                <span className="text-sm">{opt.label}</span>
+              </label>
+            ))}
+          </div>
+        );
+        break;
+      case 'toggle':
+        input = (
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" checked={value === 'true'} onChange={e => handleChange(el.element_key, e.target.checked ? 'true' : 'false')} disabled={disabled} className="sr-only peer" />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+          </label>
+        );
+        break;
+      case 'file_upload':
+        input = <input type="file" onChange={e => handleChange(el.element_key, e.target.files?.[0]?.name || '')} multiple={el.values.multiple === 'true'} disabled={disabled} className="text-sm" />;
+        break;
+      default:
+        input = <input type="text" value={value} onChange={e => handleChange(el.element_key, e.target.value)} placeholder={placeholder} disabled={disabled} className={inputClass} />;
+    }
+
+    // Checkbox and toggle render label inline, not above
+    if (el.type_name === 'checkbox' || el.type_name === 'toggle') {
+      return (
+        <div key={el.element_key} className="mb-4">
+          {input}
+          {el.values.description && <p className="text-xs text-gray-500 mt-1">{el.values.description}</p>}
+          {error && <p className="text-sm text-red-500 mt-1">{error}</p>}
+        </div>
+      );
     }
 
     return (
@@ -321,22 +357,65 @@ export function RelationalFormRenderer({ elements, onSubmit }) {
         <label className="block text-sm font-medium text-gray-700 mb-1">
           {label} {required && <span className="text-red-500">*</span>}
         </label>
-        {el.values.description && (
-          <p className="text-xs text-gray-500 mb-1">{el.values.description}</p>
-        )}
+        {el.values.description && <p className="text-xs text-gray-500 mb-1">{el.values.description}</p>}
         {input}
         {error && <p className="text-sm text-red-500 mt-1">{error}</p>}
       </div>
     );
   };
 
+  // Recursive element tree renderer
+  const renderElementTree = (parentKey) => {
+    const children = getChildren(parentKey);
+
+    return children.map(el => {
+      // Content elements
+      if (el.type_name === 'heading') return <h2 key={el.element_key} className="text-xl font-bold mt-4 mb-2">{el.values.label}</h2>;
+      if (el.type_name === 'subheading') return <h3 key={el.element_key} className="text-lg font-semibold mt-3 mb-1">{el.values.label}</h3>;
+      if (el.type_name === 'text') return <p key={el.element_key} className="text-sm text-gray-600 mb-3">{el.values.description}</p>;
+
+      // Layout: Row
+      if (el.type_name === 'row') {
+        const cols = Number(el.values.columns) || 2;
+        return (
+          <div key={el.element_key} className="grid gap-4 mb-4" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+            {renderElementTree(el.element_key)}
+          </div>
+        );
+      }
+
+      // Layout: Section
+      if (el.type_name === 'section') {
+        return (
+          <fieldset key={el.element_key} className="border border-gray-200 rounded-lg p-4 mb-4">
+            {el.values.label && <legend className="text-sm font-semibold px-2">{el.values.label}</legend>}
+            {el.values.description && <p className="text-xs text-gray-500 mb-3">{el.values.description}</p>}
+            {renderElementTree(el.element_key)}
+          </fieldset>
+        );
+      }
+
+      // Layout: Data Table (basic rendering)
+      if (el.type_name === 'data_table') {
+        return (
+          <div key={el.element_key} className="mb-4">
+            {el.values.label && <label className="block text-sm font-medium text-gray-700 mb-1">{el.values.label}</label>}
+            <div className="border rounded-lg overflow-hidden">
+              {renderElementTree(el.element_key)}
+            </div>
+          </div>
+        );
+      }
+
+      // Input elements
+      return renderField(el);
+    });
+  };
+
   return (
     <form onSubmit={handleSubmit}>
-      {inputElements.map(renderField)}
-      <button
-        type="submit"
-        className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 mt-4"
-      >
+      {renderElementTree(null)}
+      <button type="submit" className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 mt-4">
         Submit
       </button>
     </form>

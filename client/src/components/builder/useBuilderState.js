@@ -22,11 +22,18 @@ export function useBuilderState(initialElements = []) {
 
   const selectedElement = elements.find(el => el.element_key === selectedKey) || null;
 
-  const addElement = useCallback((elementType, atPosition = null) => {
+  const getChildren = useCallback((parentKey) => {
+    return elements
+      .filter(e => e.parent_key === (parentKey || null))
+      .sort((a, b) => a.position - b.position);
+  }, [elements]);
+
+  const addElement = useCallback((elementType, atPosition = null, parentKey = null) => {
     setElements(prev => {
       const existingKeys = new Set(prev.map(e => e.element_key));
       const key = generateKey(elementType.label, existingKeys);
-      const position = atPosition ?? prev.filter(e => !e.parent_key).length;
+      const siblings = prev.filter(e => e.parent_key === (parentKey || null));
+      const position = atPosition ?? siblings.length;
 
       const newElement = {
         element_type_id: elementType.id,
@@ -35,25 +42,46 @@ export function useBuilderState(initialElements = []) {
         type_label: elementType.label,
         is_layout: elementType.is_layout,
         position,
-        parent_key: null,
+        parent_key: parentKey || null,
         values: { label: elementType.label },
         options: [],
       };
 
-      return [...prev, newElement];
+      const updated = prev.map(e => {
+        if (e.parent_key === (parentKey || null) && e.position >= position) {
+          return { ...e, position: e.position + 1 };
+        }
+        return e;
+      });
+
+      return [...updated, newElement];
     });
   }, []);
 
   const removeElement = useCallback((key) => {
     setElements(prev => {
-      const filtered = prev.filter(e => e.element_key !== key && e.parent_key !== key);
-      const roots = filtered.filter(e => !e.parent_key);
-      return filtered.map(e => {
-        if (!e.parent_key) {
-          return { ...e, position: roots.indexOf(e) };
-        }
-        return e;
-      });
+      const keysToRemove = new Set();
+      const collect = (k) => {
+        keysToRemove.add(k);
+        prev.filter(e => e.parent_key === k).forEach(child => collect(child.element_key));
+      };
+      collect(key);
+
+      const removedEl = prev.find(e => e.element_key === key);
+      const filtered = prev.filter(e => !keysToRemove.has(e.element_key));
+
+      if (removedEl) {
+        const siblings = filtered
+          .filter(e => e.parent_key === removedEl.parent_key)
+          .sort((a, b) => a.position - b.position);
+        return filtered.map(e => {
+          const idx = siblings.findIndex(s => s.element_key === e.element_key);
+          if (idx !== -1) return { ...e, position: idx };
+          return e;
+        });
+      }
+
+      return filtered;
     });
     setSelectedKey(prev => prev === key ? null : prev);
   }, []);
@@ -67,11 +95,55 @@ export function useBuilderState(initialElements = []) {
         .filter(e => e.parent_key === el.parent_key && e.element_key !== key)
         .sort((a, b) => a.position - b.position);
 
-      siblings.splice(newPosition, 0, el);
+      const clampedPos = Math.min(newPosition, siblings.length);
+      siblings.splice(clampedPos, 0, el);
 
       return prev.map(e => {
         const idx = siblings.findIndex(s => s.element_key === e.element_key);
         if (idx !== -1) return { ...e, position: idx };
+        return e;
+      });
+    });
+  }, []);
+
+  const moveToParent = useCallback((key, newParentKey, newPosition = null) => {
+    setElements(prev => {
+      const el = prev.find(e => e.element_key === key);
+      if (!el) return prev;
+
+      if (newParentKey) {
+        const isDescendant = (parentKey, targetKey) => {
+          if (parentKey === targetKey) return true;
+          const parent = prev.find(e => e.element_key === parentKey);
+          if (!parent || !parent.parent_key) return false;
+          return isDescendant(parent.parent_key, targetKey);
+        };
+        if (isDescendant(newParentKey, key)) return prev;
+      }
+
+      const oldParentKey = el.parent_key;
+      const resolvedNewParent = newParentKey || null;
+
+      const oldSiblings = prev
+        .filter(e => e.parent_key === oldParentKey && e.element_key !== key)
+        .sort((a, b) => a.position - b.position);
+
+      const newSiblings = prev
+        .filter(e => e.parent_key === resolvedNewParent && e.element_key !== key)
+        .sort((a, b) => a.position - b.position);
+
+      const insertPos = newPosition ?? newSiblings.length;
+      newSiblings.splice(insertPos, 0, { ...el, parent_key: resolvedNewParent });
+
+      return prev.map(e => {
+        if (e.element_key === key) {
+          const idx = newSiblings.findIndex(s => s.element_key === key);
+          return { ...e, parent_key: resolvedNewParent, position: idx };
+        }
+        const oldIdx = oldSiblings.findIndex(s => s.element_key === e.element_key);
+        if (oldIdx !== -1) return { ...e, position: oldIdx };
+        const newIdx = newSiblings.findIndex(s => s.element_key === e.element_key);
+        if (newIdx !== -1 && e.element_key !== key) return { ...e, position: newIdx };
         return e;
       });
     });
@@ -153,9 +225,11 @@ export function useBuilderState(initialElements = []) {
     elements,
     selectedKey,
     selectedElement,
+    getChildren,
     addElement,
     removeElement,
     moveElement,
+    moveToParent,
     updateValue,
     updateElementKey,
     updateOptions,

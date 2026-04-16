@@ -88,6 +88,7 @@ export default function FormBuilderPage() {
         onAddElement={builder.addElement}
         onDropElement={builder.addElement}
         onMoveElement={builder.moveElement}
+        onMoveToParent={builder.moveToParent}
         onRemoveElement={builder.removeElement}
         onSelectElement={builder.selectElement}
         onUpdateValue={builder.updateValue}
