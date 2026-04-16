@@ -94,6 +94,8 @@ export default function FormBuilderPage() {
         onUpdateValue={builder.updateValue}
         onUpdateKey={builder.updateElementKey}
         onUpdateOptions={builder.updateOptions}
+        allElements={builder.elements}
+        onUpdateConditions={builder.updateConditions}
       />
     </div>
   );

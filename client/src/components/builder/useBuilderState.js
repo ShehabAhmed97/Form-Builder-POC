@@ -180,6 +180,14 @@ export function useBuilderState(initialElements = []) {
     );
   }, []);
 
+  const updateConditions = useCallback((key, conditions) => {
+    setElements(prev =>
+      prev.map(e =>
+        e.element_key === key ? { ...e, conditions } : e
+      )
+    );
+  }, []);
+
   const selectElement = useCallback((key) => {
     setSelectedKey(key);
   }, []);
@@ -200,6 +208,7 @@ export function useBuilderState(initialElements = []) {
       parent_key: el.parent_id ? idToKey.get(el.parent_id) || null : null,
       values: el.values || {},
       options: el.options || [],
+      conditions: el.conditions || [],
     }));
 
     setElements(builderElements);
@@ -218,6 +227,16 @@ export function useBuilderState(initialElements = []) {
         value: o.value,
         display_order: i,
       })),
+      conditions: (el.conditions || []).map((c, ci) => ({
+        action_type_id: c.action_type_id,
+        action_value: c.action_value || null,
+        logic_operator: c.logic_operator || 'AND',
+        rules: (c.rules || []).map((r, ri) => ({
+          source_key: r.source_key,
+          operator_id: r.operator_id,
+          value: r.value,
+        })),
+      })),
     }));
   }, [elements]);
 
@@ -233,6 +252,7 @@ export function useBuilderState(initialElements = []) {
     updateValue,
     updateElementKey,
     updateOptions,
+    updateConditions,
     selectElement,
     loadElements,
     serializeForSave,

@@ -1,11 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { getElementTypeProperties } from '../../api/registry';
+import ConditionBuilder from './ConditionBuilder';
 
 export default function PropertyEditor({
   element,
   onUpdateValue,
   onUpdateKey,
   onUpdateOptions,
+  allElements,
+  onUpdateConditions,
 }) {
   const { data: propertyGroups = [], isLoading } = useQuery({
     queryKey: ['registry', 'element-type-properties', element?.element_type_id],
@@ -77,6 +80,20 @@ export default function PropertyEditor({
           <OptionsEditor
             options={element.options || []}
             onChange={(opts) => onUpdateOptions(element.element_key, opts)}
+          />
+        </div>
+      )}
+
+      {/* Conditions — not for layout/content elements */}
+      {!element.is_layout && !['heading', 'subheading', 'text'].includes(element.type_name) && (
+        <div className="mb-4">
+          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            Conditions
+          </h4>
+          <ConditionBuilder
+            element={element}
+            elements={allElements}
+            onChange={(conditions) => onUpdateConditions(element.element_key, conditions)}
           />
         </div>
       )}

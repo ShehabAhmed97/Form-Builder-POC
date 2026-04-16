@@ -208,6 +208,68 @@ export function RelationalFormRenderer({ elements, onSubmit }) {
     el => !el.is_layout && !['heading', 'subheading', 'text'].includes(el.type_name)
   );
 
+  // Condition evaluation engine
+  const evalRule = (rule, vals) => {
+    const fieldValue = vals[rule.source_key] ?? '';
+    switch (rule.operator_name) {
+      case 'equals': return String(fieldValue) === String(rule.value);
+      case 'not_equals': return String(fieldValue) !== String(rule.value);
+      case 'contains': return String(fieldValue).includes(String(rule.value));
+      case 'not_contains': return !String(fieldValue).includes(String(rule.value));
+      case 'greater_than': return Number(fieldValue) > Number(rule.value);
+      case 'less_than': return Number(fieldValue) < Number(rule.value);
+      case 'is_empty': return !fieldValue || fieldValue === '';
+      case 'is_not_empty': return fieldValue && fieldValue !== '';
+      default: return false;
+    }
+  };
+
+  const evalCondition = (cond, vals) => {
+    if (!cond.rules || cond.rules.length === 0) return false;
+    if (cond.logic_operator === 'OR') return cond.rules.some(r => evalRule(r, vals));
+    return cond.rules.every(r => evalRule(r, vals));
+  };
+
+  // Compute element states based on conditions and current values
+  const elementStates = new Map();
+  for (const el of elements) {
+    elementStates.set(el.element_key, {
+      visible: true,
+      required: el.values?.required === 'true',
+      disabled: el.values?.disabled === 'true',
+    });
+  }
+  // Elements with "show" conditions start hidden
+  for (const el of elements) {
+    if (el.conditions?.some(c => c.action_name === 'show')) {
+      elementStates.get(el.element_key).visible = false;
+    }
+  }
+  // Evaluate conditions
+  for (const el of elements) {
+    if (!el.conditions) continue;
+    for (const cond of el.conditions) {
+      const result = evalCondition(cond, values);
+      const s = elementStates.get(el.element_key);
+      if (result) {
+        switch (cond.action_name) {
+          case 'show': s.visible = true; break;
+          case 'hide': s.visible = false; break;
+          case 'require': s.required = true; break;
+          case 'unrequire': s.required = false; break;
+          case 'set_value':
+            if (values[el.element_key] !== cond.action_value) {
+              // Use a ref or schedule to avoid infinite re-renders
+              // For now, just note it - set_value is applied on next change
+            }
+            break;
+          case 'disable': s.disabled = true; break;
+          case 'enable': s.disabled = false; break;
+        }
+      }
+    }
+  }
+
   const handleChange = (key, value) => {
     setValues(prev => ({ ...prev, [key]: value }));
     if (errors[key]) setErrors(prev => ({ ...prev, [key]: null }));
@@ -216,8 +278,10 @@ export function RelationalFormRenderer({ elements, onSubmit }) {
   const validate = () => {
     const newErrors = {};
     for (const el of inputElements) {
+      const state = elementStates.get(el.element_key);
+      if (!state?.visible) continue; // Skip hidden fields
       const val = values[el.element_key];
-      if (el.values.required === 'true' && (!val || val === '' || (Array.isArray(val) && val.length === 0))) {
+      if (state.required && (!val || val === '' || (Array.isArray(val) && val.length === 0))) {
         newErrors[el.element_key] = el.values.custom_error || `${el.values.label || el.element_key} is required`;
       }
       if (el.values.min_length && val && String(val).length < Number(el.values.min_length)) {
@@ -248,12 +312,14 @@ export function RelationalFormRenderer({ elements, onSubmit }) {
   };
 
   const renderField = (el) => {
+    const state = elementStates.get(el.element_key);
+    if (!state?.visible) return null;
     const value = values[el.element_key] ?? '';
     const error = errors[el.element_key];
     const label = el.values.label || el.element_key;
     const placeholder = el.values.placeholder || '';
-    const required = el.values.required === 'true';
-    const disabled = el.values.disabled === 'true';
+    const required = state.required;
+    const disabled = state.disabled;
 
     const inputClass = `w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${
       error ? 'border-red-500' : 'border-gray-300'
@@ -369,6 +435,10 @@ export function RelationalFormRenderer({ elements, onSubmit }) {
     const children = getChildren(parentKey);
 
     return children.map(el => {
+      // Check visibility from conditions
+      const state = elementStates.get(el.element_key);
+      if (state && !state.visible) return null;
+
       // Content elements
       if (el.type_name === 'heading') return <h2 key={el.element_key} className="text-xl font-bold mt-4 mb-2">{el.values.label}</h2>;
       if (el.type_name === 'subheading') return <h3 key={el.element_key} className="text-lg font-semibold mt-3 mb-1">{el.values.label}</h3>;

@@ -15,6 +15,8 @@ export default function FormBuilderLayout({
   onUpdateValue,
   onUpdateKey,
   onUpdateOptions,
+  allElements,
+  onUpdateConditions,
 }) {
   return (
     <div className="flex h-[calc(100vh-12rem)] border border-gray-200 rounded-lg overflow-hidden bg-white">
@@ -43,6 +45,8 @@ export default function FormBuilderLayout({
           onUpdateValue={onUpdateValue}
           onUpdateKey={onUpdateKey}
           onUpdateOptions={onUpdateOptions}
+          allElements={allElements}
+          onUpdateConditions={onUpdateConditions}
         />
       </div>
     </div>
