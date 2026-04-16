@@ -204,8 +204,19 @@ export function RelationalFormRenderer({ elements, onSubmit }) {
       .filter(e => e.parent_key === (parentKey || null))
       .sort((a, b) => a.position - b.position);
 
+  const dataTableChildKeys = new Set();
+  for (const el of elements) {
+    if (el.type_name === 'data_table') {
+      for (const child of elements) {
+        if (child.parent_key === el.element_key) {
+          dataTableChildKeys.add(child.element_key);
+        }
+      }
+    }
+  }
+
   const inputElements = elements.filter(
-    el => !el.is_layout && !['heading', 'subheading', 'text'].includes(el.type_name)
+    el => !el.is_layout && !['heading', 'subheading', 'text'].includes(el.type_name) && !dataTableChildKeys.has(el.element_key)
   );
 
   // Condition evaluation engine
@@ -298,6 +309,47 @@ export function RelationalFormRenderer({ elements, onSubmit }) {
         } catch { /* invalid regex */ }
       }
     }
+
+    // Data table validation
+    for (const el of elements) {
+      if (el.type_name !== 'data_table') continue;
+      const state = elementStates.get(el.element_key);
+      if (!state?.visible) continue;
+
+      const tableKey = el.element_key;
+      const rows = Array.isArray(values[tableKey]) ? values[tableKey] : [];
+      const minRows = Number(el.values.min_rows) || 0;
+      const columns = elements.filter(c => c.parent_key === tableKey).sort((a, b) => a.position - b.position);
+
+      if (minRows > 0 && rows.length < minRows) {
+        newErrors[tableKey] = `At least ${minRows} row${minRows > 1 ? 's' : ''} required`;
+      }
+
+      for (let ri = 0; ri < rows.length; ri++) {
+        for (const col of columns) {
+          const cellVal = rows[ri][col.element_key] ?? '';
+          const cellErrorKey = `${tableKey}.${ri}.${col.element_key}`;
+
+          if (col.values.required === 'true' && (!cellVal || cellVal === '')) {
+            newErrors[cellErrorKey] = `${col.values.label || col.element_key} is required`;
+          }
+          if (col.values.min_length && cellVal && String(cellVal).length < Number(col.values.min_length)) {
+            newErrors[cellErrorKey] = col.values.custom_error || `Minimum ${col.values.min_length} characters`;
+          }
+          if (col.values.max_length && cellVal && String(cellVal).length > Number(col.values.max_length)) {
+            newErrors[cellErrorKey] = col.values.custom_error || `Maximum ${col.values.max_length} characters`;
+          }
+          if (col.values.pattern && cellVal) {
+            try {
+              if (!new RegExp(col.values.pattern).test(String(cellVal))) {
+                newErrors[cellErrorKey] = col.values.custom_error || 'Invalid format';
+              }
+            } catch { /* invalid regex */ }
+          }
+        }
+      }
+    }
+
     return newErrors;
   };
 
@@ -439,6 +491,9 @@ export function RelationalFormRenderer({ elements, onSubmit }) {
       const state = elementStates.get(el.element_key);
       if (state && !state.visible) return null;
 
+      // Skip children of data_table — they're rendered as columns inside the table
+      if (dataTableChildKeys.has(el.element_key)) return null;
+
       // Content elements
       if (el.type_name === 'heading') return <h2 key={el.element_key} className="text-xl font-bold mt-4 mb-2">{el.values.label}</h2>;
       if (el.type_name === 'subheading') return <h3 key={el.element_key} className="text-lg font-semibold mt-3 mb-1">{el.values.label}</h3>;
@@ -465,14 +520,144 @@ export function RelationalFormRenderer({ elements, onSubmit }) {
         );
       }
 
-      // Layout: Data Table (basic rendering)
+      // Layout: Data Table (dynamic rows)
       if (el.type_name === 'data_table') {
+        const tableKey = el.element_key;
+        const columns = getChildren(tableKey);
+        const rows = Array.isArray(values[tableKey]) ? values[tableKey] : [];
+        const minRows = Number(el.values.min_rows) || 0;
+        const tableError = errors[tableKey];
+
+        // Pre-populate minimum rows on first render
+        if (minRows > 0 && rows.length === 0) {
+          const initialRows = Array.from({ length: minRows }, () =>
+            Object.fromEntries(columns.map(col => [col.element_key, '']))
+          );
+          setTimeout(() => handleChange(tableKey, initialRows), 0);
+        }
+
+        const addRow = () => {
+          const newRow = Object.fromEntries(columns.map(col => [col.element_key, '']));
+          handleChange(tableKey, [...rows, newRow]);
+        };
+
+        const removeRow = (rowIdx) => {
+          handleChange(tableKey, rows.filter((_, i) => i !== rowIdx));
+        };
+
+        const updateCell = (rowIdx, colKey, cellValue) => {
+          const updated = rows.map((row, i) =>
+            i === rowIdx ? { ...row, [colKey]: cellValue } : row
+          );
+          handleChange(tableKey, updated);
+          const cellErrorKey = `${tableKey}.${rowIdx}.${colKey}`;
+          if (errors[cellErrorKey]) {
+            setErrors(prev => ({ ...prev, [cellErrorKey]: null }));
+          }
+        };
+
+        const renderCellInput = (col, rowIdx) => {
+          const colKey = col.element_key;
+          const cellValue = rows[rowIdx]?.[colKey] ?? '';
+          const cellClass = 'w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-blue-500 outline-none';
+
+          switch (col.type_name) {
+            case 'textarea':
+              return <textarea value={cellValue} onChange={e => updateCell(rowIdx, colKey, e.target.value)} rows={2} className={cellClass} />;
+            case 'number':
+              return <input type="number" value={cellValue} onChange={e => updateCell(rowIdx, colKey, e.target.value)} className={cellClass} />;
+            case 'email':
+              return <input type="email" value={cellValue} onChange={e => updateCell(rowIdx, colKey, e.target.value)} className={cellClass} />;
+            case 'phone':
+              return <input type="tel" value={cellValue} onChange={e => updateCell(rowIdx, colKey, e.target.value)} className={cellClass} />;
+            case 'date':
+              return <input type="date" value={cellValue} onChange={e => updateCell(rowIdx, colKey, e.target.value)} className={cellClass} />;
+            case 'time':
+              return <input type="time" value={cellValue} onChange={e => updateCell(rowIdx, colKey, e.target.value)} className={cellClass} />;
+            case 'datetime':
+              return <input type="datetime-local" value={cellValue} onChange={e => updateCell(rowIdx, colKey, e.target.value)} className={cellClass} />;
+            case 'select':
+              return (
+                <select value={cellValue} onChange={e => updateCell(rowIdx, colKey, e.target.value)} className={cellClass + ' bg-white'}>
+                  <option value="">Select...</option>
+                  {(col.options || []).map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+              );
+            case 'checkbox':
+            case 'toggle':
+              return <input type="checkbox" checked={cellValue === 'true' || cellValue === true} onChange={e => updateCell(rowIdx, colKey, e.target.checked ? 'true' : 'false')} className="rounded text-blue-600" />;
+            default:
+              return <input type="text" value={cellValue} onChange={e => updateCell(rowIdx, colKey, e.target.value)} className={cellClass} />;
+          }
+        };
+
         return (
-          <div key={el.element_key} className="mb-4">
+          <div key={tableKey} className="mb-4">
             {el.values.label && <label className="block text-sm font-medium text-gray-700 mb-1">{el.values.label}</label>}
-            <div className="border rounded-lg overflow-hidden">
-              {renderElementTree(el.element_key)}
+            {tableError && <p className="text-sm text-red-500 mb-1">{tableError}</p>}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    {columns.map(col => (
+                      <th key={col.element_key} className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase tracking-wide">
+                        {col.values.label || col.element_key}
+                        {col.values.required === 'true' && <span className="text-red-500 ml-0.5">*</span>}
+                      </th>
+                    ))}
+                    <th className="px-2 py-2 w-8"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={columns.length + 1} className="px-3 py-4 text-center text-gray-400 text-sm">
+                        No rows added yet
+                      </td>
+                    </tr>
+                  ) : (
+                    rows.map((_, rowIdx) => (
+                      <tr key={rowIdx} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/50">
+                        {columns.map(col => {
+                          const cellErrorKey = `${tableKey}.${rowIdx}.${col.element_key}`;
+                          const cellError = errors[cellErrorKey];
+                          return (
+                            <td key={col.element_key} className="px-2 py-1.5 align-top">
+                              {renderCellInput(col, rowIdx)}
+                              {cellError && <p className="text-xs text-red-500 mt-0.5">{cellError}</p>}
+                            </td>
+                          );
+                        })}
+                        <td className="px-2 py-1.5 align-top">
+                          {rows.length > minRows && (
+                            <button
+                              type="button"
+                              onClick={() => removeRow(rowIdx)}
+                              className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded"
+                              title="Remove row"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
+            <button
+              type="button"
+              onClick={addRow}
+              className="mt-2 text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+              </svg>
+              Add Row
+            </button>
           </div>
         );
       }
