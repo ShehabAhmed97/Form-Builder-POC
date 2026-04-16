@@ -98,6 +98,11 @@ export function createFormsRoutes(db) {
       });
     }
 
+    const idToKey = new Map();
+    for (const e of elements) {
+      idToKey.set(e.id, e.element_key);
+    }
+
     return elements.map(e => ({
       id: e.id,
       element_type_id: e.element_type_id,
@@ -106,10 +111,94 @@ export function createFormsRoutes(db) {
       is_layout: e.is_layout,
       position: e.position,
       parent_id: e.parent_id,
+      parent_key: e.parent_id ? idToKey.get(e.parent_id) || null : null,
       values: valuesByElement.get(e.id) || {},
       options: optionsByElement.get(e.id) || [],
       conditions: conditionsByElement.get(e.id) || [],
     }));
+  }
+
+  function saveVersionElements(versionId, elements, db) {
+    const keyToId = new Map();
+    const insertElement = db.prepare(
+      'INSERT INTO form_elements (form_version_id, element_type_id, element_key, position, parent_id) VALUES (?, ?, ?, ?, ?)'
+    );
+
+    for (const el of elements) {
+      const result = insertElement.run(versionId, el.element_type_id, el.element_key, el.position, null);
+      keyToId.set(el.element_key, Number(result.lastInsertRowid));
+    }
+
+    const updateParent = db.prepare('UPDATE form_elements SET parent_id = ? WHERE id = ?');
+    for (const el of elements) {
+      if (el.parent_key) {
+        const parentId = keyToId.get(el.parent_key);
+        const elementId = keyToId.get(el.element_key);
+        if (parentId && elementId) {
+          updateParent.run(parentId, elementId);
+        }
+      }
+    }
+
+    const getPropId = db.prepare('SELECT id FROM property_definitions WHERE name = ?');
+    const insertValue = db.prepare(
+      'INSERT INTO form_element_values (form_element_id, property_definition_id, value) VALUES (?, ?, ?)'
+    );
+
+    for (const el of elements) {
+      const elementId = keyToId.get(el.element_key);
+      if (el.values) {
+        for (const [propName, propValue] of Object.entries(el.values)) {
+          const prop = getPropId.get(propName);
+          if (prop) {
+            insertValue.run(elementId, prop.id, propValue);
+          }
+        }
+      }
+    }
+
+    const insertOption = db.prepare(
+      'INSERT INTO form_element_options (form_element_id, label, value, display_order) VALUES (?, ?, ?, ?)'
+    );
+
+    for (const el of elements) {
+      const elementId = keyToId.get(el.element_key);
+      if (el.options) {
+        for (const opt of el.options) {
+          insertOption.run(elementId, opt.label, opt.value, opt.display_order);
+        }
+      }
+    }
+
+    const insertCondition = db.prepare(
+      'INSERT INTO form_element_conditions (form_element_id, action_type_id, action_value, logic_operator, display_order) VALUES (?, ?, ?, ?, ?)'
+    );
+    const insertRule = db.prepare(
+      'INSERT INTO form_element_condition_rules (condition_id, source_element_id, operator_id, value, display_order) VALUES (?, ?, ?, ?, ?)'
+    );
+
+    for (const el of elements) {
+      const elementId = keyToId.get(el.element_key);
+      if (el.conditions) {
+        for (let ci = 0; ci < el.conditions.length; ci++) {
+          const cond = el.conditions[ci];
+          const condResult = insertCondition.run(
+            elementId, cond.action_type_id, cond.action_value || null, cond.logic_operator || 'AND', ci
+          );
+          const condId = Number(condResult.lastInsertRowid);
+
+          if (cond.rules) {
+            for (let ri = 0; ri < cond.rules.length; ri++) {
+              const rule = cond.rules[ri];
+              const sourceId = keyToId.get(rule.source_key);
+              if (sourceId) {
+                insertRule.run(condId, sourceId, rule.operator_id, rule.value, ri);
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   router.get('/', (req, res) => {
@@ -120,7 +209,7 @@ export function createFormsRoutes(db) {
   });
 
   router.post('/', (req, res) => {
-    const { name, description } = req.body;
+    const { name, description, elements = [] } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
 
     db.exec('BEGIN');
@@ -130,7 +219,14 @@ export function createFormsRoutes(db) {
       ).run(name, description || '');
       const formId = Number(formResult.lastInsertRowid);
 
-      db.prepare('INSERT INTO form_versions (form_id, version_num) VALUES (?, 1)').run(formId);
+      const versionResult = db.prepare(
+        'INSERT INTO form_versions (form_id, version_num) VALUES (?, 1)'
+      ).run(formId);
+      const versionId = Number(versionResult.lastInsertRowid);
+
+      if (elements.length > 0) {
+        saveVersionElements(versionId, elements, db);
+      }
 
       db.exec('COMMIT');
       const form = db.prepare('SELECT * FROM forms WHERE id = ?').get(formId);
@@ -171,87 +267,7 @@ export function createFormsRoutes(db) {
       ).run(form.id, newVersionNum);
       const versionId = Number(versionResult.lastInsertRowid);
 
-      const keyToId = new Map();
-      const insertElement = db.prepare(
-        'INSERT INTO form_elements (form_version_id, element_type_id, element_key, position, parent_id) VALUES (?, ?, ?, ?, ?)'
-      );
-
-      for (const el of elements) {
-        const result = insertElement.run(versionId, el.element_type_id, el.element_key, el.position, null);
-        keyToId.set(el.element_key, Number(result.lastInsertRowid));
-      }
-
-      const updateParent = db.prepare('UPDATE form_elements SET parent_id = ? WHERE id = ?');
-      for (const el of elements) {
-        if (el.parent_key) {
-          const parentId = keyToId.get(el.parent_key);
-          const elementId = keyToId.get(el.element_key);
-          if (parentId && elementId) {
-            updateParent.run(parentId, elementId);
-          }
-        }
-      }
-
-      const getPropId = db.prepare('SELECT id FROM property_definitions WHERE name = ?');
-      const insertValue = db.prepare(
-        'INSERT INTO form_element_values (form_element_id, property_definition_id, value) VALUES (?, ?, ?)'
-      );
-
-      for (const el of elements) {
-        const elementId = keyToId.get(el.element_key);
-        if (el.values) {
-          for (const [propName, propValue] of Object.entries(el.values)) {
-            const prop = getPropId.get(propName);
-            if (prop) {
-              insertValue.run(elementId, prop.id, propValue);
-            }
-          }
-        }
-      }
-
-      const insertOption = db.prepare(
-        'INSERT INTO form_element_options (form_element_id, label, value, display_order) VALUES (?, ?, ?, ?)'
-      );
-
-      for (const el of elements) {
-        const elementId = keyToId.get(el.element_key);
-        if (el.options) {
-          for (const opt of el.options) {
-            insertOption.run(elementId, opt.label, opt.value, opt.display_order);
-          }
-        }
-      }
-
-      // Insert conditions
-      const insertCondition = db.prepare(
-        'INSERT INTO form_element_conditions (form_element_id, action_type_id, action_value, logic_operator, display_order) VALUES (?, ?, ?, ?, ?)'
-      );
-      const insertRule = db.prepare(
-        'INSERT INTO form_element_condition_rules (condition_id, source_element_id, operator_id, value, display_order) VALUES (?, ?, ?, ?, ?)'
-      );
-
-      for (const el of elements) {
-        const elementId = keyToId.get(el.element_key);
-        if (el.conditions) {
-          for (let ci = 0; ci < el.conditions.length; ci++) {
-            const cond = el.conditions[ci];
-            const condResult = insertCondition.run(
-              elementId, cond.action_type_id, cond.action_value || null, cond.logic_operator || 'AND', ci
-            );
-            const condId = Number(condResult.lastInsertRowid);
-
-            if (cond.rules) {
-              for (let ri = 0; ri < cond.rules.length; ri++) {
-                const rule = cond.rules[ri];
-                const sourceId = keyToId.get(rule.source_key);
-                if (sourceId) {
-                  insertRule.run(condId, sourceId, rule.operator_id, rule.value, ri);
-                }
-              }
-            }
-          }
-        }
-      }
+      saveVersionElements(versionId, elements, db);
 
       db.exec('COMMIT');
 
