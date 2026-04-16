@@ -281,5 +281,105 @@ export function createFormsRoutes(db) {
     res.json({ ...version, elements });
   });
 
+  // POST /api/forms/:id/duplicate — deep copy form as new entity
+  router.post('/:id/duplicate', (req, res) => {
+    const sourceForm = db.prepare('SELECT * FROM forms WHERE id = ?').get(req.params.id);
+    if (!sourceForm) return res.status(404).json({ error: 'Form not found' });
+
+    const sourceVersion = db.prepare(
+      'SELECT id FROM form_versions WHERE form_id = ? AND version_num = ?'
+    ).get(sourceForm.id, sourceForm.current_version);
+
+    const sourceElements = sourceVersion ? loadVersionElements(sourceVersion.id) : [];
+
+    db.exec('BEGIN');
+    try {
+      const formResult = db.prepare(
+        'INSERT INTO forms (name, description) VALUES (?, ?)'
+      ).run(`${sourceForm.name} (Copy)`, sourceForm.description);
+      const newFormId = Number(formResult.lastInsertRowid);
+
+      const versionResult = db.prepare(
+        'INSERT INTO form_versions (form_id, version_num) VALUES (?, 1)'
+      ).run(newFormId);
+      const newVersionId = Number(versionResult.lastInsertRowid);
+
+      const oldKeyToNewId = new Map();
+      const insertElement = db.prepare(
+        'INSERT INTO form_elements (form_version_id, element_type_id, element_key, position, parent_id) VALUES (?, ?, ?, ?, ?)'
+      );
+
+      for (const el of sourceElements) {
+        const result = insertElement.run(newVersionId, el.element_type_id, el.element_key, el.position, null);
+        oldKeyToNewId.set(el.element_key, Number(result.lastInsertRowid));
+      }
+
+      const updateParent = db.prepare('UPDATE form_elements SET parent_id = ? WHERE id = ?');
+      for (const el of sourceElements) {
+        if (el.parent_id) {
+          const parentEl = sourceElements.find(e => e.id === el.parent_id);
+          if (parentEl) {
+            const newParentId = oldKeyToNewId.get(parentEl.element_key);
+            const newElementId = oldKeyToNewId.get(el.element_key);
+            if (newParentId && newElementId) {
+              updateParent.run(newParentId, newElementId);
+            }
+          }
+        }
+      }
+
+      const getPropId = db.prepare('SELECT id FROM property_definitions WHERE name = ?');
+      const insertValue = db.prepare(
+        'INSERT INTO form_element_values (form_element_id, property_definition_id, value) VALUES (?, ?, ?)'
+      );
+      for (const el of sourceElements) {
+        const newElId = oldKeyToNewId.get(el.element_key);
+        for (const [propName, propValue] of Object.entries(el.values || {})) {
+          const prop = getPropId.get(propName);
+          if (prop) insertValue.run(newElId, prop.id, propValue);
+        }
+      }
+
+      const insertOption = db.prepare(
+        'INSERT INTO form_element_options (form_element_id, label, value, display_order) VALUES (?, ?, ?, ?)'
+      );
+      for (const el of sourceElements) {
+        const newElId = oldKeyToNewId.get(el.element_key);
+        for (const opt of el.options || []) {
+          insertOption.run(newElId, opt.label, opt.value, opt.display_order);
+        }
+      }
+
+      const insertCondition = db.prepare(
+        'INSERT INTO form_element_conditions (form_element_id, action_type_id, action_value, logic_operator, display_order) VALUES (?, ?, ?, ?, ?)'
+      );
+      const insertRule = db.prepare(
+        'INSERT INTO form_element_condition_rules (condition_id, source_element_id, operator_id, value, display_order) VALUES (?, ?, ?, ?, ?)'
+      );
+      for (const el of sourceElements) {
+        const newElId = oldKeyToNewId.get(el.element_key);
+        for (const cond of el.conditions || []) {
+          const condResult = insertCondition.run(
+            newElId, cond.action_type_id, cond.action_value, cond.logic_operator, cond.display_order
+          );
+          const newCondId = Number(condResult.lastInsertRowid);
+          for (const rule of cond.rules || []) {
+            const newSourceId = oldKeyToNewId.get(rule.source_key);
+            if (newSourceId) {
+              insertRule.run(newCondId, newSourceId, rule.operator_id, rule.value, rule.display_order);
+            }
+          }
+        }
+      }
+
+      db.exec('COMMIT');
+      const newForm = db.prepare('SELECT * FROM forms WHERE id = ?').get(newFormId);
+      res.status(201).json(newForm);
+    } catch (err) {
+      db.exec('ROLLBACK');
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return router;
 }
