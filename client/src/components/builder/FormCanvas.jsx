@@ -142,6 +142,81 @@ export default function FormCanvas({
       );
     }
 
+    // Data table: column-preview table
+    if (parent?.type_name === 'data_table') {
+      const dropTarget = `${parentKey}:${children.length}`;
+      const emptyDropTarget = `${parentKey}:0`;
+      return (
+        <div className="p-2">
+          {children.length === 0 ? (
+            <div
+              onDragOver={(e) => handleDragOver(e, emptyDropTarget)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, parentKey, 0)}
+              className={`min-h-[3rem] border border-dashed rounded-md flex items-center justify-center text-xs text-gray-400 transition-colors ${
+                dragOverTarget === emptyDropTarget ? 'border-blue-400 bg-blue-50' : 'border-gray-300'
+              }`}
+            >
+              Drop input elements here to define columns
+            </div>
+          ) : (
+            <>
+              <table className="w-full border-collapse border border-gray-300 text-xs">
+                <thead>
+                  <tr>
+                    {children.map((child) => {
+                      const isSelected = selectedKey === child.element_key;
+                      return (
+                        <th
+                          key={child.element_key}
+                          onClick={(e) => { e.stopPropagation(); onSelect(child.element_key); }}
+                          className={`border border-gray-300 px-2 py-1.5 text-left font-medium cursor-pointer transition-colors ${
+                            isSelected ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="truncate">{child.values.label || child.element_key}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onRemove(child.element_key); }}
+                              className="flex-shrink-0 text-gray-400 hover:text-red-500 transition-colors"
+                              title="Remove column"
+                            >
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    {children.map((child) => (
+                      <td key={child.element_key} className="border border-gray-300 px-2 py-1.5">
+                        <span className="italic text-gray-400">{child.type_name}</span>
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+              <div
+                onDragOver={(e) => handleDragOver(e, dropTarget)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, parentKey, children.length)}
+                className={`mt-1 border border-dashed rounded-md flex items-center justify-center text-xs text-gray-400 transition-colors py-1 ${
+                  dragOverTarget === dropTarget ? 'border-blue-400 bg-blue-50 h-8' : 'border-gray-300 h-6'
+                }`}
+              >
+                + column
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+
     // Section / other layout: vertical stack
     return (
       <div className="p-2 space-y-1">
