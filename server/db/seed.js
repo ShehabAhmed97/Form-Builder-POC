@@ -98,6 +98,7 @@ export function seedRegistry(db) {
     { group: 'validation', name: 'max_value', label: 'Max Value', data_type: 'number', input_type: 'number', description: 'Maximum numeric value', default_value: null },
     { group: 'validation', name: 'pattern', label: 'Regex Pattern', data_type: 'string', input_type: 'text', description: 'Regular expression for validation', default_value: null },
     { group: 'validation', name: 'custom_error', label: 'Custom Error Message', data_type: 'string', input_type: 'text', description: 'Error message shown when validation fails', default_value: null },
+    { group: 'validation', name: 'min_rows', label: 'Minimum Rows', data_type: 'number', input_type: 'number', description: 'Minimum number of rows required', default_value: '0' },
     // Display
     { group: 'display', name: 'hidden', label: 'Hidden', data_type: 'boolean', input_type: 'checkbox', description: 'Hide this field from the form', default_value: 'false' },
     { group: 'display', name: 'disabled', label: 'Disabled', data_type: 'boolean', input_type: 'checkbox', description: 'Make this field read-only', default_value: 'false' },
@@ -276,11 +277,10 @@ export function seedRegistry(db) {
     ['section', 'description', 0, 2, null],
     ['section', 'css_class', 0, 3, null],
 
-    // data_table (4 props)
+    // data_table (3 props)
     ['data_table', 'label', 1, 1, null],
-    ['data_table', 'columns', 1, 2, '2'],
-    ['data_table', 'rows', 0, 3, '3'],
-    ['data_table', 'css_class', 0, 4, null],
+    ['data_table', 'min_rows', 0, 2, '0'],
+    ['data_table', 'css_class', 0, 3, null],
 
     // heading (2 props)
     ['heading', 'label', 1, 1, null],

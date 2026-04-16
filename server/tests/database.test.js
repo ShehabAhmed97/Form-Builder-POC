@@ -51,12 +51,12 @@ describe('database initialization', () => {
 
   it('seeds property definitions', () => {
     const count = db.prepare('SELECT COUNT(*) as n FROM property_definitions').get().n;
-    expect(count).toBe(17);
+    expect(count).toBe(18);
   });
 
   it('seeds element type properties junction', () => {
     const count = db.prepare('SELECT COUNT(*) as n FROM element_type_properties').get().n;
-    expect(count).toBe(141);
+    expect(count).toBe(140);
   });
 
   it('seeds condition action types', () => {
