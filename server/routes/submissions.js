@@ -166,15 +166,51 @@ export function createSubmissionsRoutes(db) {
     const elements = loadVersionForValidation(version.id);
     const elementState = resolveConditions(elements, values);
 
+    // Identify data_table elements and their children
+    const dataTableElements = elements.filter(e => e.type_name === 'data_table');
+    const dataTableChildIds = new Set();
+    for (const table of dataTableElements) {
+      for (const child of elements) {
+        if (child.parent_id === table.id) dataTableChildIds.add(child.element_key);
+      }
+    }
+
     const errors = {};
     const contentTypes = ['heading', 'subheading', 'text'];
     for (const el of elements) {
       if (el.is_layout || contentTypes.includes(el.type_name)) continue;
+      if (dataTableChildIds.has(el.element_key)) continue;
       const state = elementState.get(el.element_key);
       if (!state || !state.visible) continue;
       const val = values[el.element_key];
       if (state.required && (!val || val === '')) {
         errors[el.element_key] = el.values.custom_error || `${el.values.label || el.element_key} is required`;
+      }
+    }
+
+    // Data table validation
+    for (const table of dataTableElements) {
+      const tableState = elementState.get(table.element_key);
+      if (!tableState || !tableState.visible) continue;
+
+      const tableKey = table.element_key;
+      const rawValue = values[tableKey];
+      const rows = Array.isArray(rawValue) ? rawValue : [];
+      const minRows = Number(table.values?.min_rows) || 0;
+      const tableChildren = elements.filter(e => e.parent_id === table.id);
+
+      if (minRows > 0 && rows.length < minRows) {
+        errors[tableKey] = `At least ${minRows} row${minRows > 1 ? 's' : ''} required`;
+      }
+
+      for (let ri = 0; ri < rows.length; ri++) {
+        for (const col of tableChildren) {
+          const cellVal = rows[ri]?.[col.element_key] ?? '';
+          const cellErrorKey = `${tableKey}.${ri}.${col.element_key}`;
+          if (col.values?.required === 'true' && (!cellVal || cellVal === '')) {
+            errors[cellErrorKey] = col.values.custom_error || `${col.values.label || col.element_key} is required`;
+          }
+        }
       }
     }
 
@@ -194,11 +230,22 @@ export function createSubmissionsRoutes(db) {
       );
       for (const el of elements) {
         if (el.is_layout || contentTypes.includes(el.type_name)) continue;
+        if (dataTableChildIds.has(el.element_key)) continue;
         const state = elementState.get(el.element_key);
         if (!state || !state.visible) continue;
         const val = values[el.element_key];
         if (val !== undefined && val !== null && val !== '') {
           insertValue.run(submissionId, el.id, String(val));
+        }
+      }
+
+      // Store data_table values as JSON arrays
+      for (const table of dataTableElements) {
+        const tableState = elementState.get(table.element_key);
+        if (!tableState || !tableState.visible) continue;
+        const rawValue = values[table.element_key];
+        if (Array.isArray(rawValue) && rawValue.length > 0) {
+          insertValue.run(submissionId, table.id, JSON.stringify(rawValue));
         }
       }
 
@@ -236,6 +283,12 @@ export function createSingleSubmissionRoutes(db) {
 
     const values = {};
     for (const v of valueRows) {
+      if (v.value && v.value.startsWith('[')) {
+        try {
+          values[v.element_key] = JSON.parse(v.value);
+          continue;
+        } catch { /* not JSON, store as string */ }
+      }
       values[v.element_key] = v.value;
     }
 

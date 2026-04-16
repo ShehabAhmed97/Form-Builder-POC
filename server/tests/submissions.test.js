@@ -100,3 +100,92 @@ describe('Submissions API with conditions', () => {
     expect(res.body.values.tech_stack).toBe('Python');
   });
 });
+
+describe('Submissions API with data_table', () => {
+  let app, formId, subAppId;
+  let textTypeId, numberTypeId, dataTableTypeId;
+
+  beforeAll(async () => {
+    app = createApp(':memory:');
+
+    const types = await request(app).get('/api/registry/element-types');
+    const basicInput = types.body.find(c => c.name === 'basic_input');
+    textTypeId = basicInput.types.find(t => t.name === 'textfield').id;
+    numberTypeId = basicInput.types.find(t => t.name === 'number').id;
+    dataTableTypeId = types.body.find(c => c.name === 'layout').types.find(t => t.name === 'data_table').id;
+
+    const form = await request(app).post('/api/forms').send({ name: 'Table Form' });
+    formId = form.body.id;
+
+    await request(app).put(`/api/forms/${formId}`).send({
+      name: 'Table Form',
+      elements: [
+        {
+          element_type_id: dataTableTypeId,
+          element_key: 'expenses',
+          position: 0,
+          parent_key: null,
+          values: { label: 'Expenses', min_rows: '1' },
+          options: [],
+          conditions: [],
+        },
+        {
+          element_type_id: textTypeId,
+          element_key: 'item',
+          position: 0,
+          parent_key: 'expenses',
+          values: { label: 'Item', required: 'true' },
+          options: [],
+          conditions: [],
+        },
+        {
+          element_type_id: numberTypeId,
+          element_key: 'cost',
+          position: 1,
+          parent_key: 'expenses',
+          values: { label: 'Cost' },
+          options: [],
+          conditions: [],
+        },
+      ],
+    });
+
+    const sa = await request(app).post('/api/sub-apps').send({ name: 'Expense App', form_id: formId });
+    subAppId = sa.body.id;
+  });
+
+  it('rejects submission when min_rows not met', async () => {
+    const res = await request(app)
+      .post(`/api/sub-apps/${subAppId}/submissions`)
+      .send({ user_id: 'user1', values: { expenses: [] } });
+    expect(res.status).toBe(400);
+    expect(res.body.errors.expenses).toBeDefined();
+  });
+
+  it('rejects submission when required cell is empty', async () => {
+    const res = await request(app)
+      .post(`/api/sub-apps/${subAppId}/submissions`)
+      .send({ user_id: 'user1', values: { expenses: [{ item: '', cost: '50' }] } });
+    expect(res.status).toBe(400);
+    expect(res.body.errors['expenses.0.item']).toBeDefined();
+  });
+
+  it('accepts valid table submission', async () => {
+    const res = await request(app)
+      .post(`/api/sub-apps/${subAppId}/submissions`)
+      .send({ user_id: 'user1', values: { expenses: [{ item: 'Flight', cost: '500' }] } });
+    expect(res.status).toBe(201);
+  });
+
+  it('returns table data as parsed array on GET', async () => {
+    const create = await request(app)
+      .post(`/api/sub-apps/${subAppId}/submissions`)
+      .send({ user_id: 'user1', values: { expenses: [{ item: 'Hotel', cost: '300' }, { item: 'Taxi', cost: '50' }] } });
+
+    const res = await request(app).get(`/api/submissions/${create.body.id}`);
+    expect(res.body.values.expenses).toEqual([
+      { item: 'Hotel', cost: '300' },
+      { item: 'Taxi', cost: '50' },
+    ]);
+  });
+});
