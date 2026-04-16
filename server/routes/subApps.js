@@ -1,48 +1,43 @@
-import express from 'express';
+import { Router } from 'express';
 
-export default function subAppsRoutes(db) {
-  const router = express.Router();
+export function createSubAppsRoutes(db) {
+  const router = Router();
 
-  // List all sub-apps with form info and submission count
   router.get('/', (req, res) => {
     const subApps = db.prepare(`
       SELECT sa.*, f.name as form_name,
         (SELECT COUNT(*) FROM submissions s WHERE s.sub_app_id = sa.id) as submission_count
       FROM sub_apps sa
-      LEFT JOIN forms f ON f.id = sa.form_id
+      LEFT JOIN forms f ON sa.form_id = f.id
       ORDER BY sa.created_at DESC
     `).all();
     res.json(subApps);
   });
 
-  // Create sub-app
   router.post('/', (req, res) => {
     const { name, description, form_id } = req.body;
+    if (!name || !form_id) return res.status(400).json({ error: 'Name and form_id are required' });
+
     const result = db.prepare(
       'INSERT INTO sub_apps (name, description, form_id) VALUES (?, ?, ?)'
     ).run(name, description || '', form_id);
 
-    const subApp = db.prepare('SELECT * FROM sub_apps WHERE id = ?').get(result.lastInsertRowid);
+    const subApp = db.prepare('SELECT * FROM sub_apps WHERE id = ?').get(Number(result.lastInsertRowid));
     res.status(201).json(subApp);
   });
 
-  // Get sub-app with form info and current schema
   router.get('/:id', (req, res) => {
     const subApp = db.prepare(`
-      SELECT sa.*, f.name as form_name, f.current_version as form_current_version,
-        fv.schema, fv.id as current_form_version_id
+      SELECT sa.*, f.name as form_name, f.current_version as form_current_version
       FROM sub_apps sa
-      LEFT JOIN forms f ON f.id = sa.form_id
-      LEFT JOIN form_versions fv ON fv.form_id = f.id AND fv.version_num = f.current_version
+      LEFT JOIN forms f ON sa.form_id = f.id
       WHERE sa.id = ?
     `).get(req.params.id);
 
     if (!subApp) return res.status(404).json({ error: 'Sub-app not found' });
-    if (subApp.schema) subApp.schema = JSON.parse(subApp.schema);
     res.json(subApp);
   });
 
-  // Update sub-app
   router.put('/:id', (req, res) => {
     const { name, description, form_id } = req.body;
     db.prepare(

@@ -1,15 +1,15 @@
-import express from 'express';
+import { Router } from 'express';
 
-export function submissionsRoutes(db) {
-  const router = express.Router({ mergeParams: true });
+export function createSubmissionsRoutes(db) {
+  const router = Router({ mergeParams: true });
 
-  // List submissions for a sub-app (optionally filtered by user_id)
   router.get('/', (req, res) => {
     const { subAppId } = req.params;
     const { user_id } = req.query;
 
     let query = `
-      SELECT s.*, fv.version_num
+      SELECT s.id, s.sub_app_id, s.form_version_id, s.user_id, s.status,
+             s.created_at, s.updated_at, fv.version_num
       FROM submissions s
       JOIN form_versions fv ON s.form_version_id = fv.id
       WHERE s.sub_app_id = ?
@@ -22,54 +22,47 @@ export function submissionsRoutes(db) {
     }
 
     query += ' ORDER BY s.created_at DESC';
-
     const submissions = db.prepare(query).all(...params);
-    submissions.forEach(s => { s.data = JSON.parse(s.data); });
     res.json(submissions);
   });
 
-  // Create submission — auto-resolves current form version
   router.post('/', (req, res) => {
     const { subAppId } = req.params;
     const { user_id, data } = req.body;
 
-    const subApp = db.prepare(`
-      SELECT sa.form_id, fv.id as form_version_id
-      FROM sub_apps sa
-      JOIN forms f ON f.id = sa.form_id
-      JOIN form_versions fv ON fv.form_id = f.id AND fv.version_num = f.current_version
-      WHERE sa.id = ?
-    `).get(subAppId);
+    if (!user_id) return res.status(400).json({ error: 'user_id is required' });
 
+    const subApp = db.prepare('SELECT form_id FROM sub_apps WHERE id = ?').get(subAppId);
     if (!subApp) return res.status(404).json({ error: 'Sub-app not found' });
 
-    const result = db.prepare(
-      'INSERT INTO submissions (sub_app_id, form_version_id, user_id, data, status) VALUES (?, ?, ?, ?, ?)'
-    ).run(subAppId, subApp.form_version_id, user_id, JSON.stringify(data), 'submitted');
+    const form = db.prepare('SELECT current_version FROM forms WHERE id = ?').get(subApp.form_id);
+    const version = db.prepare(
+      'SELECT id FROM form_versions WHERE form_id = ? AND version_num = ?'
+    ).get(subApp.form_id, form.current_version);
 
-    const submission = db.prepare('SELECT * FROM submissions WHERE id = ?').get(result.lastInsertRowid);
-    submission.data = JSON.parse(submission.data);
+    const result = db.prepare(
+      'INSERT INTO submissions (sub_app_id, form_version_id, user_id, status) VALUES (?, ?, ?, ?)'
+    ).run(subAppId, version.id, user_id, 'submitted');
+
+    const submission = db.prepare('SELECT * FROM submissions WHERE id = ?').get(Number(result.lastInsertRowid));
     res.status(201).json(submission);
   });
 
   return router;
 }
 
-export function singleSubmissionRoutes(db) {
-  const router = express.Router();
+export function createSingleSubmissionRoutes(db) {
+  const router = Router();
 
-  // Get single submission with its form schema
   router.get('/:id', (req, res) => {
     const submission = db.prepare(`
-      SELECT s.*, fv.schema, fv.version_num
+      SELECT s.*, fv.version_num
       FROM submissions s
       JOIN form_versions fv ON s.form_version_id = fv.id
       WHERE s.id = ?
     `).get(req.params.id);
 
     if (!submission) return res.status(404).json({ error: 'Submission not found' });
-    submission.data = JSON.parse(submission.data);
-    submission.schema = JSON.parse(submission.schema);
     res.json(submission);
   });
 

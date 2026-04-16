@@ -1,28 +1,30 @@
-import express from 'express';
+import { Router } from 'express';
 
-export default function formsRoutes(db) {
-  const router = express.Router();
+export function createFormsRoutes(db) {
+  const router = Router();
 
-  // List all forms
   router.get('/', (req, res) => {
-    const forms = db.prepare('SELECT * FROM forms ORDER BY created_at DESC').all();
+    const forms = db.prepare(
+      'SELECT id, name, description, current_version, created_at, updated_at FROM forms ORDER BY created_at DESC'
+    ).all();
     res.json(forms);
   });
 
-  // Create form + version 1
   router.post('/', (req, res) => {
-    const { name, description, schema } = req.body;
+    const { name, description } = req.body;
+    if (!name) return res.status(400).json({ error: 'Name is required' });
 
     db.exec('BEGIN');
     try {
-      const result = db.prepare(
-        'INSERT INTO forms (name, description, current_version) VALUES (?, ?, 1)'
+      const formResult = db.prepare(
+        'INSERT INTO forms (name, description) VALUES (?, ?)'
       ).run(name, description || '');
-      const formId = result.lastInsertRowid;
+
+      const formId = Number(formResult.lastInsertRowid);
 
       db.prepare(
-        'INSERT INTO form_versions (form_id, version_num, schema) VALUES (?, 1, ?)'
-      ).run(formId, JSON.stringify(schema));
+        'INSERT INTO form_versions (form_id, version_num) VALUES (?, 1)'
+      ).run(formId);
 
       db.exec('COMMIT');
 
@@ -30,67 +32,33 @@ export default function formsRoutes(db) {
       res.status(201).json(form);
     } catch (err) {
       db.exec('ROLLBACK');
-      throw err;
+      res.status(500).json({ error: err.message });
     }
   });
 
-  // Get form with current schema
   router.get('/:id', (req, res) => {
-    const form = db.prepare(`
-      SELECT f.*, fv.schema, fv.version_num
-      FROM forms f
-      JOIN form_versions fv ON fv.form_id = f.id AND fv.version_num = f.current_version
-      WHERE f.id = ?
-    `).get(req.params.id);
-
+    const form = db.prepare('SELECT * FROM forms WHERE id = ?').get(req.params.id);
     if (!form) return res.status(404).json({ error: 'Form not found' });
-    form.schema = JSON.parse(form.schema);
     res.json(form);
   });
 
-  // Update form — creates new version
   router.put('/:id', (req, res) => {
-    const { name, description, schema } = req.body;
-    const formId = req.params.id;
+    const form = db.prepare('SELECT * FROM forms WHERE id = ?').get(req.params.id);
+    if (!form) return res.status(404).json({ error: 'Form not found' });
 
-    const existing = db.prepare('SELECT * FROM forms WHERE id = ?').get(formId);
-    if (!existing) return res.status(404).json({ error: 'Form not found' });
+    const { name, description } = req.body;
+    db.prepare(
+      'UPDATE forms SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).run(name || form.name, description ?? form.description, req.params.id);
 
-    const newVersion = existing.current_version + 1;
-
-    db.exec('BEGIN');
-    try {
-      db.prepare(
-        'UPDATE forms SET name = ?, description = ?, current_version = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).run(name || existing.name, description ?? existing.description, newVersion, formId);
-
-      db.prepare(
-        'INSERT INTO form_versions (form_id, version_num, schema) VALUES (?, ?, ?)'
-      ).run(formId, newVersion, JSON.stringify(schema));
-
-      db.exec('COMMIT');
-    } catch (err) {
-      db.exec('ROLLBACK');
-      throw err;
-    }
-
-    const updated = db.prepare(`
-      SELECT f.*, fv.schema
-      FROM forms f
-      JOIN form_versions fv ON fv.form_id = f.id AND fv.version_num = f.current_version
-      WHERE f.id = ?
-    `).get(formId);
-    updated.schema = JSON.parse(updated.schema);
+    const updated = db.prepare('SELECT * FROM forms WHERE id = ?').get(req.params.id);
     res.json(updated);
   });
 
-  // List all versions of a form
   router.get('/:id/versions', (req, res) => {
     const versions = db.prepare(
-      'SELECT * FROM form_versions WHERE form_id = ? ORDER BY version_num DESC'
+      'SELECT id, form_id, version_num, created_at FROM form_versions WHERE form_id = ? ORDER BY version_num DESC'
     ).all(req.params.id);
-
-    versions.forEach(v => { v.schema = JSON.parse(v.schema); });
     res.json(versions);
   });
 
