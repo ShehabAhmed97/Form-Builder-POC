@@ -6,7 +6,7 @@ A proof-of-concept for a dynamic form building and submission platform. Admins c
 ## Tech Stack
 - **Frontend**: React 18+ (Vite), React Router, TailwindCSS, TanStack Query
 - **Backend**: Node.js + Express
-- **Database**: SQLite via better-sqlite3
+- **Database**: SQLite via node:sqlite (Node built-in DatabaseSync)
 - **Form Engine**: Form.io Community Edition (formio.js / @formio/react)
   - Drag-and-drop builder (Form.io FormBuilder)
   - Simple config-based builder (custom UI outputting same Form.io JSON schema)
