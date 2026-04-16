@@ -28,7 +28,7 @@ export function createSubmissionsRoutes(db) {
 
   router.post('/', (req, res) => {
     const { subAppId } = req.params;
-    const { user_id, data } = req.body;
+    const { user_id } = req.body;
 
     if (!user_id) return res.status(400).json({ error: 'user_id is required' });
 

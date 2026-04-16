@@ -33,6 +33,3 @@ export function createApp(dbPath) {
   return app;
 }
 
-// Default export for server startup (index.js)
-const app = createApp();
-export default app;
