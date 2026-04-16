@@ -96,6 +96,10 @@ export default function FormBuilderPage() {
         onUpdateOptions={builder.updateOptions}
         allElements={builder.elements}
         onUpdateConditions={builder.updateConditions}
+        onUndo={builder.undo}
+        onRedo={builder.redo}
+        canUndo={builder.canUndo}
+        canRedo={builder.canRedo}
       />
     </div>
   );

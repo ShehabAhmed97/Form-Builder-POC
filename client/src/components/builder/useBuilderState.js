@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 function generateKey(label, existingKeys) {
   let base = label
@@ -22,6 +22,18 @@ export function useBuilderState(initialElements = []) {
 
   const selectedElement = elements.find(el => el.element_key === selectedKey) || null;
 
+  const historyRef = useRef([]);
+  const futureRef = useRef([]);
+  const maxHistory = 50;
+
+  const setElementsWithHistory = useCallback((updater) => {
+    setElements(prev => {
+      historyRef.current = [...historyRef.current.slice(-(maxHistory - 1)), prev];
+      futureRef.current = [];
+      return typeof updater === 'function' ? updater(prev) : updater;
+    });
+  }, []);
+
   const getChildren = useCallback((parentKey) => {
     return elements
       .filter(e => e.parent_key === (parentKey || null))
@@ -29,7 +41,7 @@ export function useBuilderState(initialElements = []) {
   }, [elements]);
 
   const addElement = useCallback((elementType, atPosition = null, parentKey = null) => {
-    setElements(prev => {
+    setElementsWithHistory(prev => {
       const existingKeys = new Set(prev.map(e => e.element_key));
       const key = generateKey(elementType.label, existingKeys);
       const siblings = prev.filter(e => e.parent_key === (parentKey || null));
@@ -59,7 +71,7 @@ export function useBuilderState(initialElements = []) {
   }, []);
 
   const removeElement = useCallback((key) => {
-    setElements(prev => {
+    setElementsWithHistory(prev => {
       const keysToRemove = new Set();
       const collect = (k) => {
         keysToRemove.add(k);
@@ -87,7 +99,7 @@ export function useBuilderState(initialElements = []) {
   }, []);
 
   const moveElement = useCallback((key, newPosition) => {
-    setElements(prev => {
+    setElementsWithHistory(prev => {
       const el = prev.find(e => e.element_key === key);
       if (!el) return prev;
 
@@ -107,7 +119,7 @@ export function useBuilderState(initialElements = []) {
   }, []);
 
   const moveToParent = useCallback((key, newParentKey, newPosition = null) => {
-    setElements(prev => {
+    setElementsWithHistory(prev => {
       const el = prev.find(e => e.element_key === key);
       if (!el) return prev;
 
@@ -150,17 +162,17 @@ export function useBuilderState(initialElements = []) {
   }, []);
 
   const updateValue = useCallback((key, propName, propValue) => {
-    setElements(prev =>
+    setElementsWithHistory(prev =>
       prev.map(e =>
         e.element_key === key
           ? { ...e, values: { ...e.values, [propName]: propValue } }
           : e
       )
     );
-  }, []);
+  }, [setElementsWithHistory]);
 
   const updateElementKey = useCallback((oldKey, newKey) => {
-    setElements(prev => {
+    setElementsWithHistory(prev => {
       const existingKeys = new Set(prev.map(e => e.element_key));
       if (existingKeys.has(newKey) && newKey !== oldKey) return prev;
       return prev.map(e => {
@@ -173,20 +185,45 @@ export function useBuilderState(initialElements = []) {
   }, []);
 
   const updateOptions = useCallback((key, options) => {
-    setElements(prev =>
+    setElementsWithHistory(prev =>
       prev.map(e =>
         e.element_key === key ? { ...e, options } : e
       )
     );
-  }, []);
+  }, [setElementsWithHistory]);
 
   const updateConditions = useCallback((key, conditions) => {
-    setElements(prev =>
+    setElementsWithHistory(prev =>
       prev.map(e =>
         e.element_key === key ? { ...e, conditions } : e
       )
     );
+  }, [setElementsWithHistory]);
+
+  const undo = useCallback(() => {
+    if (historyRef.current.length === 0) return;
+    setElements(prev => {
+      futureRef.current = [prev, ...futureRef.current];
+      const last = historyRef.current[historyRef.current.length - 1];
+      historyRef.current = historyRef.current.slice(0, -1);
+      return last;
+    });
+    setSelectedKey(null);
   }, []);
+
+  const redo = useCallback(() => {
+    if (futureRef.current.length === 0) return;
+    setElements(prev => {
+      historyRef.current = [...historyRef.current, prev];
+      const next = futureRef.current[0];
+      futureRef.current = futureRef.current.slice(1);
+      return next;
+    });
+    setSelectedKey(null);
+  }, []);
+
+  const canUndo = historyRef.current.length > 0;
+  const canRedo = futureRef.current.length > 0;
 
   const selectElement = useCallback((key) => {
     setSelectedKey(key);
@@ -256,5 +293,9 @@ export function useBuilderState(initialElements = []) {
     selectElement,
     loadElements,
     serializeForSave,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   };
 }

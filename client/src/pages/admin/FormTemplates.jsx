@@ -1,8 +1,14 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { getForms } from '../../api/forms';
+import { getForms, duplicateForm } from '../../api/forms';
 
 export default function FormTemplates() {
+  const queryClient = useQueryClient();
+  const duplicateMutation = useMutation({
+    mutationFn: (id) => duplicateForm(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['forms'] }),
+  });
+
   const { data: forms, isLoading } = useQuery({
     queryKey: ['forms'],
     queryFn: getForms,
@@ -57,6 +63,13 @@ export default function FormTemplates() {
                       <Link to={`/admin/forms/${form.id}/versions`} className="text-gray-600 hover:underline text-sm">
                         History
                       </Link>
+                      <button
+                        onClick={() => duplicateMutation.mutate(form.id)}
+                        disabled={duplicateMutation.isPending}
+                        className="text-gray-600 hover:underline text-sm disabled:opacity-50"
+                      >
+                        Duplicate
+                      </button>
                     </div>
                   </td>
                 </tr>
