@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getForm, createForm, updateForm } from '../../api/forms';
-import SimpleBuilder from '../../components/SimpleBuilder';
+import { useBuilderState } from '../../components/builder/useBuilderState';
+import FormBuilderLayout from '../../components/builder/FormBuilderLayout';
 
 export default function FormBuilderPage() {
   const { id } = useParams();
@@ -12,7 +13,8 @@ export default function FormBuilderPage() {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [schema, setSchema] = useState({ display: 'form', components: [] });
+
+  const builder = useBuilderState();
 
   const { data: form } = useQuery({
     queryKey: ['form', id],
@@ -24,70 +26,74 @@ export default function FormBuilderPage() {
     if (form) {
       setName(form.name);
       setDescription(form.description || '');
-      if (form.schema) {
-        setSchema(typeof form.schema === 'string' ? JSON.parse(form.schema) : form.schema);
+      if (form.elements) {
+        builder.loadElements(form.elements);
       }
     }
   }, [form]);
 
   const saveMutation = useMutation({
     mutationFn: (data) => isEditing ? updateForm(id, data) : createForm(data),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['forms'] });
-      navigate('/admin/forms');
+      if (!isEditing) {
+        navigate(`/admin/forms/${result.id}/edit`);
+      }
     },
   });
 
   const handleSave = () => {
-    saveMutation.mutate({ name, description, schema });
+    const payload = {
+      name,
+      description,
+      elements: builder.serializeForSave(),
+    };
+    saveMutation.mutate(payload);
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">
-          {isEditing ? 'Edit Form Template' : 'New Form Template'}
-        </h1>
+    <div className="max-w-[1400px] mx-auto">
+      {/* Top bar */}
+      <div className="flex items-center gap-4 mb-4">
+        <div className="flex-1 flex items-center gap-3">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="text-xl font-bold bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none px-1 py-0.5"
+            placeholder="Form name"
+          />
+          <input
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="text-sm text-gray-500 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none px-1 py-0.5 flex-1"
+            placeholder="Description (optional)"
+          />
+        </div>
         <button
           onClick={handleSave}
           disabled={saveMutation.isPending || !name.trim()}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          className="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
         >
           {saveMutation.isPending ? 'Saving...' : 'Save'}
         </button>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Form Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
-              placeholder="Enter form name"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
-              placeholder="Enter description"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg shadow p-6">
-        <SimpleBuilder
-          schema={schema}
-          onChange={setSchema}
-        />
-      </div>
+      {/* Three-panel builder */}
+      <FormBuilderLayout
+        elements={builder.elements}
+        selectedKey={builder.selectedKey}
+        selectedElement={builder.selectedElement}
+        onAddElement={builder.addElement}
+        onDropElement={builder.addElement}
+        onMoveElement={builder.moveElement}
+        onRemoveElement={builder.removeElement}
+        onSelectElement={builder.selectElement}
+        onUpdateValue={builder.updateValue}
+        onUpdateKey={builder.updateElementKey}
+        onUpdateOptions={builder.updateOptions}
+      />
     </div>
   );
 }

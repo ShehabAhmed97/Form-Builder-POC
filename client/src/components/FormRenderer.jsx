@@ -195,6 +195,154 @@ function renderField(comp, value, onChange, error) {
   }
 }
 
+export function RelationalFormRenderer({ elements, onSubmit }) {
+  const [values, setValues] = useState({});
+  const [errors, setErrors] = useState({});
+
+  const inputElements = elements
+    .filter(el => !el.parent_key && !el.is_layout && !['heading', 'subheading', 'text'].includes(el.type_name))
+    .sort((a, b) => a.position - b.position);
+
+  const handleChange = (key, value) => {
+    setValues(prev => ({ ...prev, [key]: value }));
+    if (errors[key]) setErrors(prev => ({ ...prev, [key]: null }));
+  };
+
+  const validate = () => {
+    const newErrors = {};
+    for (const el of inputElements) {
+      const val = values[el.element_key];
+      if (el.values.required === 'true' && (!val || val === '')) {
+        newErrors[el.element_key] = el.values.custom_error || `${el.values.label || el.element_key} is required`;
+      }
+      if (el.values.min_length && val && val.length < Number(el.values.min_length)) {
+        newErrors[el.element_key] = el.values.custom_error || `Minimum ${el.values.min_length} characters`;
+      }
+      if (el.values.max_length && val && val.length > Number(el.values.max_length)) {
+        newErrors[el.element_key] = el.values.custom_error || `Maximum ${el.values.max_length} characters`;
+      }
+      if (el.values.pattern && val) {
+        try {
+          if (!new RegExp(el.values.pattern).test(val)) {
+            newErrors[el.element_key] = el.values.custom_error || 'Invalid format';
+          }
+        } catch { /* invalid regex, skip */ }
+      }
+    }
+    return newErrors;
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const newErrors = validate();
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    onSubmit(values);
+  };
+
+  const renderField = (el) => {
+    const value = values[el.element_key] || '';
+    const error = errors[el.element_key];
+    const label = el.values.label || el.element_key;
+    const placeholder = el.values.placeholder || '';
+    const required = el.values.required === 'true';
+
+    const inputClass = `w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${
+      error ? 'border-red-500' : 'border-gray-300'
+    }`;
+
+    let input;
+    switch (el.type_name) {
+      case 'textarea':
+        input = (
+          <textarea
+            value={value}
+            onChange={(e) => handleChange(el.element_key, e.target.value)}
+            placeholder={placeholder}
+            rows={Number(el.values.rows) || 3}
+            className={inputClass}
+          />
+        );
+        break;
+      case 'number':
+        input = (
+          <input
+            type="number"
+            value={value}
+            onChange={(e) => handleChange(el.element_key, e.target.value)}
+            placeholder={placeholder}
+            min={el.values.min_value}
+            max={el.values.max_value}
+            className={inputClass}
+          />
+        );
+        break;
+      case 'email':
+        input = (
+          <input
+            type="email"
+            value={value}
+            onChange={(e) => handleChange(el.element_key, e.target.value)}
+            placeholder={placeholder}
+            className={inputClass}
+          />
+        );
+        break;
+      case 'select':
+        input = (
+          <select
+            value={value}
+            onChange={(e) => handleChange(el.element_key, e.target.value)}
+            className={inputClass}
+          >
+            <option value="">{placeholder || 'Select...'}</option>
+            {(el.options || []).map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        );
+        break;
+      default:
+        input = (
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => handleChange(el.element_key, e.target.value)}
+            placeholder={placeholder}
+            className={inputClass}
+          />
+        );
+    }
+
+    return (
+      <div key={el.element_key} className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+        {el.values.description && (
+          <p className="text-xs text-gray-500 mb-1">{el.values.description}</p>
+        )}
+        {input}
+        {error && <p className="text-sm text-red-500 mt-1">{error}</p>}
+      </div>
+    );
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {inputElements.map(renderField)}
+      <button
+        type="submit"
+        className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 mt-4"
+      >
+        Submit
+      </button>
+    </form>
+  );
+}
+
 export default function FormRenderer({ schema, onSubmit }) {
   const components = schema?.components || [];
   const [values, setValues] = useState(() => getInitialValues(components));
