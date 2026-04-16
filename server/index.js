@@ -1,5 +1,5 @@
-const { createApp } = require('./app');
-const { getDb } = require('./db/database');
+import { createApp } from './app.js';
+import { getDb } from './db/database.js';
 
 const db = getDb();
 const app = createApp(db);

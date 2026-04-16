@@ -1,15 +1,16 @@
-const express = require('express');
-const cors = require('cors');
+import express from 'express';
+import cors from 'cors';
+import formsRoutes from './routes/forms.js';
+import subAppsRoutes from './routes/subApps.js';
+import { submissionsRoutes, singleSubmissionRoutes } from './routes/submissions.js';
 
-function createApp(db) {
+export function createApp(db) {
   const app = express();
   app.use(cors());
   app.use(express.json({ limit: '10mb' }));
 
-  app.use('/api/forms', require('./routes/forms')(db));
-  app.use('/api/sub-apps', require('./routes/subApps')(db));
-
-  const { submissionsRoutes, singleSubmissionRoutes } = require('./routes/submissions');
+  app.use('/api/forms', formsRoutes(db));
+  app.use('/api/sub-apps', subAppsRoutes(db));
   app.use('/api/sub-apps/:subAppId/submissions', submissionsRoutes(db));
   app.use('/api/submissions', singleSubmissionRoutes(db));
 
@@ -17,5 +18,3 @@ function createApp(db) {
 
   return app;
 }
-
-module.exports = { createApp };
